@@ -1,0 +1,74 @@
+####################################################
+# Binary Locations: If absolute path is not specified, the entry in $PATH will be used.
+
+executable_locations:
+  # rawtherapee-cli binary executable
+  rawtherapee_cli: rawtherapee-cli
+  # Location of dcraw executable
+  dcraw: dcraw
+  # Location of oiiotool
+  oiiotool: oiiotool
+  # Location of exiftool
+  exiftool: exiftool
+
+
+####################################################
+# Configuration Options
+
+# Default OCIO Config file to use if none is specified on the commandline
+default_ocioconfig:
+
+# Default rawtherapee pp3 file to use for debayering
+rt_default_profile: lin_ap0.pp3
+
+# Default colorspace conversions for different formats. Possible colorspaces are defined in your OCIO Config.
+colorspace_in: ACES - ACES2065-1
+colorspaces_out:
+  exr: ACES - ACEScg
+  tif: ACES - ACEScg
+  jpg: Output - Rec.709
+
+# Default behavior for calculating exposure adjustment if none specified.
+# none / a / ae = no autoexposure, autoexpose once per sequence, or autoexpose each image
+autoexpose:
+
+# Uses a box of size percentage to calculate autoexposure. 1.0 will use whole image. 0.5 will use a centered box of 50% image size.
+autoexposure_center_percentage: 0.5
+# Target average value for sampled pixels
+autoexposure_target: 0.18
+
+# Raw image formats to search for raw processing. Uppercase will be automatically added.
+raw_formats: ["crw", "cr2", "cr3", "dng", "nef", "nrw", "arw", "bay", "cap", "iiq", "eip", "dcs", "dcr", "drf", "kdc", "erf", "fff", "mef", "mdc", "mos", "mrw", "orf", "pef", "ptx", "raf", "raw", "rw2", "rwl", "srw", "x3f"]
+
+# Default output format to generate if none is specified. Can be exr or jpg or tif. This entry is a list that can have 1 or more entries.
+possible_output_formats: [exr, tif, jpg]
+default_output_formats: [exr, jpg]
+
+# Exr compression: "none", "zip", "rle", "zips", "piz", "pxr24", "b44", "b44a", "dwaa:45", "dwab:45"
+# Tiff compression: "none", "lzw", "zip" (deflate), "ccittrle"
+# Jpeg compression: --quality <int> --attrib "jpeg:subsampling" "4:2:2" --resize 50%
+compression:
+  exr: --compression zip
+  tif: --compression zip
+  jpg: --quality 90 --attrib "jpeg:subsampling" "4:2:2"
+
+# oiiotool resize argument: e.g. 1920x1080, 1920x0 (resizes height to match input AR), 50%, 25%
+# TODO: Only active if -r not specified on commandline for now
+default_format_resize:
+  exr:
+  tif:
+  jpg: 50%
+
+# Resize pixel filter:
+# "box", "triangle", "gaussian", "sharp-gaussian", "catmull-rom", "blackman-harris", "sinc", "lanczos3", "mitchell", "bspline", "cubic", "keys", "simon", "rifman"
+resize_filter:
+
+# Output datatype to use for each image. Possible options:
+# uint8, sint8, uint10, uint12, uint16, sint16, uint32, sint32, half, float, double
+datatype:
+  exr: half
+  tif: uint16
+  jpg: uint8
+
+# Debayer engine to use: <rt>, <dcraw>
+debayer_engine: rt
