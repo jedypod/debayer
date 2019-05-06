@@ -193,6 +193,11 @@ class Debayer():
                             help="Output lots of useless information.",
                             required=False)
 
+        parser.add_argument("-e", "--exposure",
+                            type=float,
+                            help="Exposure adjust the output image. No autoexposure will be performed. e.g. 1.1 1.5 2.0",
+                            required=False)
+
         parser.add_argument("-a", "--autoexpose",
                             action="store_true",
                             help="Auto expose. Image sequences will have static exposure adjustement.",
@@ -211,10 +216,6 @@ class Debayer():
         parser.add_argument("-si", "--search_include",
                             help="Only include files that contain <search_include>.\n"
                                  "Can be comma separated list.",
-                            required=False)
-
-        parser.add_argument("-e", "--engine",
-                            help="Specify debayering engine to use. Can be <dcraw> or <rt>.",
                             required=False)
 
         parser.add_argument("-w", "--overwrite",
@@ -299,8 +300,16 @@ class Debayer():
 
         self.resize = args.resize
 
+
         self.autoexpose = args.autoexpose
         self.autoexpose_each = args.autoexpose_each
+
+        self.exposure = args.exposure
+        # No autoexposure if args.exposure is specified
+        if self.exposure:
+            self.autoexpose_each = None
+            self.autoexpose = None
+
         # Default autoexposure if none specified
         if not self.autoexpose and not self.autoexpose_each:
             if self.default_autoexposure != "none":
@@ -308,6 +317,9 @@ class Debayer():
                     self.autoexpose = True
                 elif self.default_autoexposure == "ae":
                     self.autoexpose_each = True
+
+
+
 
         # Ignore string
         self.search_exclude = args.search_exclude
@@ -330,14 +342,6 @@ class Debayer():
             self.search_include_list = None
 
         self.overwrite = args.overwrite
-
-        if args.engine:
-            if args.engine == "dcraw" or args.engine == "rt":
-                # use specified debayer engine instead of default from config
-                self.debayer_engine = args.engine
-            else:
-                log.error("Invalid engine specied: {0}. Valid options are <dcraw> or <rt>".format(args.engine))
-                return None
 
         # Output Format
         if args.output_formats:
@@ -594,8 +598,15 @@ class Debayer():
         if resize:
             oiiotool_cmd += resize_string
 
+        # Specify datatype
+        if output_format in self.datatypes:
+            if self.datatypes[output_format] in ["uint8", "sint8", "uint10", "uint12", "uint16", "sint16", "uint32", "sint32", "half", "float", "double"]:
+                oiiotool_cmd += " -d {0}".format(self.datatypes[output_format])
+
         if self.autoexposure != 1.0:
             oiiotool_cmd += " --mulc {0},{0},{0},1.0".format(self.autoexposure)
+        if self.exposure:
+            oiiotool_cmd += " --mulc {0},{0},{0},1.0".format(self.exposure)
 
         # Validate OCIO stuff
         if self.colorspaces_out:
@@ -607,10 +618,6 @@ class Debayer():
                         self.colorspaces_out[output_format]
                     )
 
-        # Specify datatype
-        if output_format in self.datatypes:
-            if self.datatypes[output_format] in ["uint8", "sint8", "uint10", "uint12", "uint16", "sint16", "uint32", "sint32", "half", "float", "double"]:
-                oiiotool_cmd += " -d {0}".format(self.datatypes[output_format])
 
         # Output format compression options
         if self.compression:
