@@ -20,11 +20,11 @@ A common workflow would be to open rawtherapee and set up a profile on an exampl
 Debayer can also auto-expose your raw images with a crude autoexposure algorithm with the `-a` flag. The default behavior is to autoexpose once on the center frame for image sequences, but you can autoexpose each frame if desired with the `-ae` flag. The autoexposure_center_percentage and autoexposure_target values in the config file will determine the calculated autoexposure.
 
 ## Commandline Options
-    usage: debayer [-h] [-o OUTPUT] [-p PROFILE] [-ca] [-r RESIZE] [-v] [-a] [-ae]
-               [-se SEARCH_EXCLUDE] [-si SEARCH_INCLUDE] [-e ENGINE] [-w]
-               [-f OUTPUT_FORMATS] [--ocioconfig OCIOCONFIG]
-               [-c COLORSPACES_OUT]
-               input_paths [input_paths ...]
+    usage: debayer [-h] [-v] [-o OUTPUT] [-w] [-f OUTPUT_FORMATS] [-p PROFILE]
+                [-ca] [--ocioconfig OCIOCONFIG] [-c COLORSPACES_OUT]
+                [-r RESIZE] [-e EXPOSURE] [-a] [-ae] [-se SEARCH_EXCLUDE]
+                [-si SEARCH_INCLUDE]
+                input_paths [input_paths ...]
 
     Debayer raw files to output images. For each of one or more input directories,
     recursively find all raw files, recreate the directory structure, and convert
@@ -36,40 +36,19 @@ Debayer can also auto-expose your raw images with a crude autoexposure algorithm
 
     optional arguments:
     -h, --help            show this help message and exit
+    -v, --verbose         Output lots of useless information.
     -o OUTPUT, --output OUTPUT
                             Output directory. If not specified, the current
                             directory will be used.
+    -w, --overwrite       Overwrite existing output files.
+    -f OUTPUT_FORMATS, --output_formats OUTPUT_FORMATS
+                            Output image format. Default is exr. This can be exr,
+                            tif, jpg. Or a comma separated list like "exr,jpg"
     -p PROFILE, --profile PROFILE
                             Optional override to specify a custom rawtherapee pp3
                             profile to use. If none, the default in the config
                             file will be used.
     -ca, --aberration     Remove chromatic aberration (rawtherapee only)
-    -r RESIZE, --resize RESIZE
-                            Apply a resize to the output image. Aspect ratio is
-                            not preserved if both width and height are specified.
-                            <width>x<height>. 1920x2348 (1x3) -> 5760x2348 ->
-                            3840x1565 -> 2880x1174. Or 1280x2160 (1x3) ->
-                            3840x2160 -> 2560x1440 -> 1920x1080. Or preserve
-                            aspect ratio if w or h = 0: e.g. "1920x0" Can also be
-                            a percentage like "50%"
-    -v, --verbose         Output lots of useless information.
-    -a, --autoexpose      Auto expose. Image sequences will have static exposure
-                            adjustement.
-    -ae, --autoexpose_each
-                            Auto expose each frame.
-    -se SEARCH_EXCLUDE, --search_exclude SEARCH_EXCLUDE
-                            Strings to ignore. If image full path contains string,
-                            skip. Can be comma separated list.
-    -si SEARCH_INCLUDE, --search_include SEARCH_INCLUDE
-                            Only include files that contain <search_include>. Can
-                            be comma separated list.
-    -e ENGINE, --engine ENGINE
-                            Specify debayering engine to use. Can be <dcraw> or
-                            <rt>.
-    -w, --overwrite       Overwrite existing output files.
-    -f OUTPUT_FORMATS, --output_formats OUTPUT_FORMATS
-                            Output image format. Default is exr. This can be exr,
-                            tif, jpg. Or a comma separated list like "exr,jpg"
     --ocioconfig OCIOCONFIG
                             OCIO config to use. If none specified, a generic ACES
                             config will be used, which should handle most common
@@ -80,6 +59,27 @@ Debayer can also auto-expose your raw images with a crude autoexposure algorithm
                             <format>:<colorspace> - e.g.
                             "exr:lin_ap1,tif:lin_ap1,jpg:out_rec709" or
                             "exr:lin_sgamut3cine" or "ACES - ACEScg"
+    -r RESIZE, --resize RESIZE
+                            Apply a resize to the output image. Aspect ratio is
+                            not preserved if both width and height are specified.
+                            <width>x<height>. 1920x2348 (1x3) -> 5760x2348 ->
+                            3840x1565 -> 2880x1174. Or 1280x2160 (1x3) ->
+                            3840x2160 -> 2560x1440 -> 1920x1080. Or preserve
+                            aspect ratio if w or h = 0: e.g. "1920x0" Can also be
+                            a percentage like "50%"
+    -e EXPOSURE, --exposure EXPOSURE
+                            Exposure adjust the output image. No autoexposure will
+                            be performed. e.g. 1.1 1.5 2.0
+    -a, --autoexpose      Auto expose. Image sequences will have static exposure
+                            adjustement.
+    -ae, --autoexpose_each
+                            Auto expose each frame.
+    -se SEARCH_EXCLUDE, --search_exclude SEARCH_EXCLUDE
+                            Strings to ignore. If image full path contains string,
+                            skip. Can be comma separated list.
+    -si SEARCH_INCLUDE, --search_include SEARCH_INCLUDE
+                            Only include files that contain <search_include>. Can
+                            be comma separated list.
 
 
 ## Dependencies
