@@ -160,6 +160,11 @@ class Debayer():
                             description="Debayer raw files to output images. For each of one or more input directories,\n"
                                         "recursively find all raw files, recreate the directory structure, and convert to output images in destination directory")
 
+        parser.add_argument("-v", "--verbose",
+                            action="store_true",
+                            help="Output lots of useless information.",
+                            required=False)
+
         parser.add_argument("input_paths",
                             help="Source(s) to process. Can one or more directories or raw images.",
                             type=str,
@@ -168,6 +173,16 @@ class Debayer():
 
         parser.add_argument("-o", "--output",
                             help="Output directory. If not specified, the current directory will be used.",
+                            required=False)
+
+        parser.add_argument("-w", "--overwrite",
+                            action="store_true",
+                            help="Overwrite existing output files.",
+                            required=False)
+
+        parser.add_argument("-f", "--output_formats",
+                            help="Output image format. Default is exr.\n"
+                                 "This can be exr, tif, jpg. Or a comma separated list like \"exr,jpg\"",
                             required=False)
 
         parser.add_argument("-p", "--profile",
@@ -180,17 +195,22 @@ class Debayer():
                             action="store_true",
                             required=False)
 
+        parser.add_argument("--ocioconfig",
+                            help="OCIO config to use. If none specified, a generic ACES config will be used, which should handle most common color transforms.",
+                            required=False)
+
+        parser.add_argument("-c", "--colorspaces_out",
+                            help="Output OCIO colorspace. If not specified the default defined in the config will be used.\n"
+                                 "format: <format>:<colorspace> - e.g. \"exr:lin_ap1,tif:lin_ap1,jpg:out_rec709\" or \n"
+                                 "\"exr:lin_sgamut3cine\" or \"ACES - ACEScg\"",
+                            required=False)
+
         parser.add_argument("-r", "--resize",
                             help="Apply a resize to the output image. Aspect ratio is not preserved if both width and height are specified.\n"
                                  "<width>x<height>. 1920x2348 (1x3) -> 5760x2348 -> 3840x1565 -> 2880x1174.\n"
                                  "Or 1280x2160 (1x3) -> 3840x2160 -> 2560x1440 -> 1920x1080.\n"
                                  "Or preserve aspect ratio if w or h = 0: e.g. \"1920x0\"\n"
                                  "Can also be a percentage like \"50%%\"",
-                            required=False)
-
-        parser.add_argument("-v", "--verbose",
-                            action="store_true",
-                            help="Output lots of useless information.",
                             required=False)
 
         parser.add_argument("-e", "--exposure",
@@ -216,26 +236,6 @@ class Debayer():
         parser.add_argument("-si", "--search_include",
                             help="Only include files that contain <search_include>.\n"
                                  "Can be comma separated list.",
-                            required=False)
-
-        parser.add_argument("-w", "--overwrite",
-                            action="store_true",
-                            help="Overwrite existing output files.",
-                            required=False)
-
-        parser.add_argument("-f", "--output_formats",
-                            help="Output image format. Default is exr.\n"
-                                 "This can be exr, tif, jpg. Or a comma separated list like \"exr,jpg\"",
-                            required=False)
-
-        parser.add_argument("--ocioconfig",
-                            help="OCIO config to use. If none specified, a generic ACES config will be used, which should handle most common color transforms.",
-                            required=False)
-
-        parser.add_argument("-c", "--colorspaces_out",
-                            help="Output OCIO colorspace. If not specified the default defined in the config will be used.\n"
-                                 "format: <format>:<colorspace> - e.g. \"exr:lin_ap1,tif:lin_ap1,jpg:out_rec709\" or \n"
-                                 "\"exr:lin_sgamut3cine\" or \"ACES - ACEScg\"",
                             required=False)
 
 
@@ -375,15 +375,23 @@ class Debayer():
             log.warning("OCIO Config does not exist: \n\t{0}\n\tNo OCIO color transform will be applied".format(
                 self.ocioconfig))
             self.ocioconfig = None
+        log.debug("OCIO Config: {0}".format(self.ocioconfig))
 
         # OCIO Colorspace for output image
         if args.colorspaces_out:
             self.colorspaces_out = {}
-            if ":" in args.colorspaces_out:
-                for entry in args.colorspaces_out.split(':'):
-                    if "," in entry:
-                        for output_format, colorspace in entry.split(','):
-                            self.colorspaces_out[output_format] = colorspace
+            if "," in args.colorspaces_out:
+                entries = args.colorspaces_out.split(',')
+            else:
+                entries = [args.colorspaces_out]
+            for entry in entries:
+                if ":" in entry:
+                    output_format, colorspace = entry.split(':')
+                    self.colorspaces_out[output_format] = colorspace
+                else:
+                    # If no image format specified, assume exr
+                    self.colorspaces_out['exr'] = args.colorspaces_out
+            log.debug("Output Color Transform: {0}".format(self.colorspaces_out))
 
         # Find source raw images
         for input_dir in input_dirs:
@@ -536,7 +544,7 @@ class Debayer():
                 return tmp_output_image
 
         elif self.debayer_engine == "rt":
-            rtcli_cmd = "{0} -o {1} -p {2} -b32f -Y -q -f -t -c {3}".format(
+            rtcli_cmd = "{0} -o {1} -p {2} -b16f -Y -q -f -t -c {3}".format(
                 self.rawtherapee_cli,
                 tmp_output_image,
                 self.profile,

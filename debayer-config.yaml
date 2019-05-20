@@ -42,13 +42,13 @@ raw_formats: ["crw", "cr2", "cr3", "dng", "nef", "nrw", "arw", "bay", "cap", "ii
 
 # Default output format to generate if none is specified. Can be exr or jpg or tif. This entry is a list that can have 1 or more entries.
 possible_output_formats: [exr, tif, jpg]
-default_output_formats: [exr, jpg]
+default_output_formats: [exr]
 
 # Exr compression: "none", "zip", "rle", "zips", "piz", "pxr24", "b44", "b44a", "dwaa:45", "dwab:45"
 # Tiff compression: "none", "lzw", "zip" (deflate), "ccittrle"
 # Jpeg compression: --quality <int> --attrib "jpeg:subsampling" "4:2:2" --resize 50%
 compression:
-  exr: --compression zip
+  exr: --compression dwaa:45
   tif: --compression zip
   jpg: --quality 90 --attrib "jpeg:subsampling" "4:2:2"
 
@@ -57,7 +57,7 @@ compression:
 default_format_resize:
   exr:
   tif:
-  jpg: 50%
+  jpg:
 
 # Resize pixel filter:
 # "box", "triangle", "gaussian", "sharp-gaussian", "catmull-rom", "blackman-harris", "sinc", "lanczos3", "mitchell", "bspline", "cubic", "keys", "simon", "rifman"
