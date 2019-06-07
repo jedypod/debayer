@@ -55,7 +55,7 @@ class Debayer():
     def __init__(self):
 
         # Create tmp directory on local disk
-        self.tmp_dir = tempfile.mkdtemp()
+        self.tmp_dir = tempfile.gettempdir()
         log.debug("Temp Directory is {0}".format(self.tmp_dir))
 
         self.success = self.validate()
@@ -65,7 +65,10 @@ class Debayer():
 
         # Remove temp directory
         if self.tmp_dir:
-            shutil.rmtree(self.tmp_dir)
+            try:
+                shutil.rmtree(self.tmp_dir)
+            except WindowsError as error:
+                log.error(error)
 
     def validate(self):
         '''
@@ -293,7 +296,9 @@ class Debayer():
             tmp_profile = os.path.join(self.tmp_dir, os.path.basename(self.profile))
             log.debug("Chromatic Aberration specified: Creating temp profile: {0}".format(tmp_profile))
             shutil.copyfile(self.profile, tmp_profile)
-            sed_proc = subprocess.Popen(shlex.split("sed -i -e 's/CA=false/CA=true/' {0}".format(tmp_profile)))
+            cmd = "sed -i -e 's/CA=false/CA=true/' {0}".format(tmp_profile)
+            log.debug(cmd)
+            sed_proc = subprocess.Popen(cmd)
             result, error = sed_proc.communicate()
             if not error:
                 self.profile = tmp_profile
@@ -529,8 +534,9 @@ class Debayer():
             dcraw_cmd = "dcraw -v -T -4 -o 6 -q 3 -w -H 0 -W -c '{0}'".format(input_image)
 
             with open(tmp_output_image, "w") as output_file:
+                log.debug(dcraw_cmd)
                 dcraw_proc = subprocess.Popen(
-                    shlex.split(dcraw_cmd),
+                    dcraw_cmd,
                     stdout=output_file
                     )
             result, error = dcraw_proc.communicate()
@@ -544,7 +550,7 @@ class Debayer():
                 return tmp_output_image
 
         elif self.debayer_engine == "rt":
-            rtcli_cmd = "{0} -o {1} -p {2} -b16f -Y -q -f -t -c {3}".format(
+            rtcli_cmd = '"{0}" -o "{1}" -p "{2}" -b16f -Y -q -f -t -c {3}'.format(
                 self.rawtherapee_cli,
                 tmp_output_image,
                 self.profile,
@@ -552,7 +558,7 @@ class Debayer():
             )
             log.debug(rtcli_cmd)
             rtcli_proc = subprocess.Popen(
-                shlex.split(rtcli_cmd),
+                rtcli_cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE
                 )
@@ -589,7 +595,7 @@ class Debayer():
 
         dst_img = dst_img + ".{0}".format(output_format)
 
-        oiiotool_cmd = "{0} -v {1}".format(self.oiiotool, src_img)
+        oiiotool_cmd = '"{0}" -v "{1}"'.format(self.oiiotool, src_img)
 
         # Setup resize string
         resize_string = " --rangecompress --resize"
@@ -635,7 +641,7 @@ class Debayer():
         # Output image
         oiiotool_cmd += " -o {0}".format(dst_img)
         log.debug(oiiotool_cmd)
-        oiiotool_proc = subprocess.Popen(shlex.split(oiiotool_cmd),
+        oiiotool_proc = subprocess.Popen(oiiotool_cmd,
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE)
         result, error = oiiotool_proc.communicate()
@@ -683,7 +689,7 @@ class Debayer():
         if self.exiftool:
             exiftool_cmd = "{0} -overwrite_original -tagsFromFile {1} {2}".format(self.exiftool, src, dst)
             log.debug("Copying exif metadata from raw: \t{0}".format(exiftool_cmd))
-            exiftool_proc = subprocess.Popen(shlex.split(exiftool_cmd))
+            exiftool_proc = subprocess.Popen(exiftool_cmd)
             result, error = exiftool_proc.communicate()
             if error:
                 log.warning("Copying metadata failed: {0}".format(error))
