@@ -16,7 +16,7 @@ import yaml
 
 # Get config yaml file
 dir_path = os.path.dirname(os.path.realpath(__file__))
-CONFIG = os.path.join(dir_path, "debayer-config.yaml")
+CONFIG = os.path.join(dir_path, "config.yaml")
 
 # Set up logger # %(levelname)s %(asctime)s
 logging.basicConfig(
@@ -55,7 +55,7 @@ class Debayer():
     def __init__(self):
 
         # Create tmp directory on local disk
-        self.tmp_dir = tempfile.gettempdir()
+        self.tmp_dir = tempfile.mkdtemp()
         log.debug("Temp Directory is {0}".format(self.tmp_dir))
 
         self.success = self.validate()

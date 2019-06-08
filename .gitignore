@@ -1,4 +1,14 @@
+# python
 ._*
 *.pyc
-#test*
+*.egg-info
+
+# test
 .vscode*
+
+# pip
+build
+dist
+
+# git
+.git
