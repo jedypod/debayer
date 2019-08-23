@@ -3,12 +3,17 @@ from __future__ import with_statement
 from __future__ import print_function
 from __future__ import division
 
-import os, sys, argparse, re
+import os
+import sys
+import argparse
+import re
 import tempfile
 import shutil
-import time, datetime
+import time
+import datetime
 import logging
-import subprocess, shlex
+import subprocess
+import shlex
 import pyseq
 import distutils.spawn
 import yaml
@@ -52,6 +57,7 @@ class Debayer():
         default_format_resize:
         raw_formats:
     '''
+
     def __init__(self):
 
         # Create tmp directory on local disk
@@ -99,7 +105,8 @@ class Debayer():
                 if exe.startswith(os.path.sep):
                     self.rawtherapee_cli = location
                 else:
-                    self.rawtherapee_cli = distutils.spawn.find_executable(location)
+                    self.rawtherapee_cli = distutils.spawn.find_executable(
+                        location)
                 if not self.rawtherapee_cli or not os.path.exists(self.rawtherapee_cli):
                     msg = 'rawtherapee-cli executable count not be found in "{}".'
                     log.error(msg.format(self.rawtherapee_cli))
@@ -148,13 +155,15 @@ class Debayer():
         self.colorspaces_out = self.config.get('colorspaces_out')
         self.default_autoexposure = self.config.get('autoexpose')
         self.autoexposure_target = self.config.get('autoexposure_target')
-        self.autoexposure_center_percentage = self.config.get('autoexposure_center_percentage')
+        self.autoexposure_center_percentage = self.config.get(
+            'autoexposure_center_percentage')
         self.ocioconfig = self.config.get('default_ocioconfig') or ''
         self.resize_filter = self.config.get('resize_filter')
         self.default_format_resize = self.config.get('default_format_resize')
 
         self.raw_formats = self.config.get('raw_formats')
-        self.raw_formats = self.raw_formats + [r.upper() for r in self.raw_formats]
+        self.raw_formats = self.raw_formats + \
+            [r.upper() for r in self.raw_formats]
 
         log.debug("Processing raw formats:\n" + " ".join(self.raw_formats))
 
@@ -241,9 +250,8 @@ class Debayer():
                                  "Can be comma separated list.",
                             required=False)
 
-
         # Show help if no args.
-        if len(sys.argv)==1:
+        if len(sys.argv) == 1:
             parser.print_help()
             return None
 
@@ -265,7 +273,8 @@ class Debayer():
                     if "." in input_path:
                         input_path_ext = input_path.split('.')[-1]
                     if input_path_ext in self.raw_formats:
-                        self.image_sequences.append((os.path.dirname(input_path), pyseq.Sequence([input_path])))
+                        self.image_sequences.append(
+                            (os.path.dirname(input_path), pyseq.Sequence([input_path])))
         if args.output:
             self.dst = args.output
             self.dst = os.path.expanduser(self.dst)
@@ -293,8 +302,10 @@ class Debayer():
         self.aberration = args.aberration
         if self.aberration:
             # Copy pp3 profile to temp dir
-            tmp_profile = os.path.join(self.tmp_dir, os.path.basename(self.profile))
-            log.debug("Chromatic Aberration specified: Creating temp profile: {0}".format(tmp_profile))
+            tmp_profile = os.path.join(
+                self.tmp_dir, os.path.basename(self.profile))
+            log.debug("Chromatic Aberration specified: Creating temp profile: {0}".format(
+                tmp_profile))
             shutil.copyfile(self.profile, tmp_profile)
             cmd = ['sed', '-i', '-e', 's/CA=false/CA=true/', tmp_profile]
             log.debug(' '.join(cmd))
@@ -304,7 +315,6 @@ class Debayer():
                 self.profile = tmp_profile
 
         self.resize = args.resize
-
 
         self.autoexpose = args.autoexpose
         self.autoexpose_each = args.autoexpose_each
@@ -323,14 +333,12 @@ class Debayer():
                 elif self.default_autoexposure == "ae":
                     self.autoexpose_each = True
 
-
-
-
         # Ignore string
         self.search_exclude = args.search_exclude
         if self.search_exclude:
             if "," in self.search_exclude:
-                self.search_exclude_list = [i.strip() for i in self.search_exclude.rsplit(',')]
+                self.search_exclude_list = [
+                    i.strip() for i in self.search_exclude.rsplit(',')]
             else:
                 self.search_exclude_list = [self.search_exclude.strip()]
         else:
@@ -340,7 +348,8 @@ class Debayer():
         self.search_include = args.search_include
         if self.search_include:
             if "," in self.search_include:
-                self.search_include_list = [i.strip() for i in self.search_include.rsplit(',')]
+                self.search_include_list = [
+                    i.strip() for i in self.search_include.rsplit(',')]
             else:
                 self.search_include_list = [self.search_include.strip()]
         else:
@@ -396,19 +405,20 @@ class Debayer():
                 else:
                     # If no image format specified, assume exr
                     self.colorspaces_out['exr'] = args.colorspaces_out
-            log.debug("Output Color Transform: {0}".format(self.colorspaces_out))
+            log.debug("Output Color Transform: {0}".format(
+                self.colorspaces_out))
 
         # Find source raw images
         for input_dir in input_dirs:
             self.gather_images(input_dir)
 
         if self.image_sequences:
-            log.debug("Found these image sequences:\n" + "\n".join([img[1].path() for img in self.image_sequences]))
+            log.debug("Found these image sequences:\n" +
+                      "\n".join([img[1].path() for img in self.image_sequences]))
             return True
         else:
             log.error('Found no image sequences... Please try again')
             return False
-
 
     def process(self):
         '''
@@ -418,7 +428,8 @@ class Debayer():
         # Loop through all found image sequences to process
         for root_dir, sequence in self.image_sequences:
             if len(sequence) > 2:
-                log.info("Debayering image sequence:\n\t{0}".format(os.path.join(sequence.dirname, sequence.format('%h%p%t %r'))))
+                log.info("Debayering image sequence:\n\t{0}".format(
+                    os.path.join(sequence.dirname, sequence.format('%h%p%t %r'))))
 
             # Create destination directories if they don't exist
             dst_dir = self.dstconv(sequence.dirname, root_dir)
@@ -430,17 +441,21 @@ class Debayer():
                 middle_frame = sequence[int(sequence.length() / 2)]
                 if not self.autoexpose_each:
                     # temp debayer for auto exposure
-                    output_image_path = self.dstconv(middle_frame.path, root_dir)
+                    output_image_path = self.dstconv(
+                        middle_frame.path, root_dir)
                     output_image_path = os.path.splitext(output_image_path)[0]
-                    tmp_output_image = self.debayer_image(middle_frame.path, output_image_path)
+                    tmp_output_image = self.debayer_image(
+                        middle_frame.path, output_image_path)
                     if tmp_output_image:
-                        self.autoexposure = self.calc_autoexposure(tmp_output_image)
+                        self.autoexposure = self.calc_autoexposure(
+                            tmp_output_image)
                         log.info("Auto exposure:\n\t{0} calculated from middle frame: {1}".format(
                             self.autoexposure, os.path.basename(middle_frame))
                             )
                         os.remove(tmp_output_image)
                     else:
-                        log.error("Error: Could not calc autoexposure. Setting to 1.0")
+                        log.error(
+                            "Error: Could not calc autoexposure. Setting to 1.0")
                         self.autoexposure = 1.0
             else:
                 self.autoexposure = 1.0
@@ -454,16 +469,18 @@ class Debayer():
                 log.info("\nsrc: \t{0}".format(image.path))
 
                 # Debayer image to temp tif file
-                tmp_output_image = self.debayer_image(image.path, output_image_path)
+                tmp_output_image = self.debayer_image(
+                    image.path, output_image_path)
                 if tmp_output_image:
                     for output_format in self.output_formats:
-                        output_image = self.convert_image(tmp_output_image, output_image_path, output_format=output_format)
+                        output_image = self.convert_image(
+                            tmp_output_image, output_image_path, output_format=output_format)
                         log.info("dst:\t{0}".format(output_image))
-                    elapsed_time = datetime.timedelta(seconds = time.time() - start_time)
+                    elapsed_time = datetime.timedelta(
+                        seconds=time.time() - start_time)
                     log.info("time: \t{0}".format(elapsed_time))
                     # Clean up file
                     os.remove(tmp_output_image)
-
 
     def dstconv(self, src_path, toplevel_dir, dst_path=None):
         '''
@@ -476,7 +493,6 @@ class Debayer():
             dst_path = self.dst
         return dst_path + src_path.split(toplevel_dir)[-1]
 
-
     def gather_images(self, source_dir):
         '''
         Gather all image sequences found in source dir and add to self.image_sequences.
@@ -487,10 +503,10 @@ class Debayer():
         if generator:
             for path, parentdir, sequences in generator:
                 for sequence in sequences:
-                    file_extension = os.path.splitext(sequence.path())[1][1:].strip()
+                    file_extension = os.path.splitext(
+                        sequence.path())[1][1:].strip()
                     if file_extension in self.raw_formats:
                         self.image_sequences.append((source_dir, sequence))
-
 
     def debayer_image(self, input_image, output_image_path, retry=0):
         '''
@@ -503,9 +519,11 @@ class Debayer():
         # Skip existing output image files unless self.overwrite is enabled
         if not self.overwrite:
             for image_format in self.output_formats:
-                final_output_image = output_image_path + ".{0}".format(image_format)
+                final_output_image = output_image_path + \
+                    ".{0}".format(image_format)
                 if os.path.exists(final_output_image) and self.get_size(final_output_image)[0] > 0.01:
-                    log.warning("skip existing:\t{0}".format(final_output_image))
+                    log.warning("skip existing:\t{0}".format(
+                        final_output_image))
                     return None
         # Skip files in ignore_list
         if self.search_exclude_list:
@@ -520,7 +538,8 @@ class Debayer():
                     log.warning("exluded:\t{0}".format(input_image))
                     return None
 
-        tmp_output_image = os.path.join(self.tmp_dir, os.path.basename(output_image_path)) + ".tif"
+        tmp_output_image = os.path.join(
+            self.tmp_dir, os.path.basename(output_image_path)) + ".tif"
 
         log.debug("tmp:\t{0}".format(tmp_output_image))
 
@@ -531,7 +550,8 @@ class Debayer():
 
             # dcraw tutorial: http://www.guillermoluijk.com/tutorial/dcraw/index_en.htm
             # rawpy might be another option https://letmaik.github.io/rawpy/api/rawpy.Params.html#rawpy.Params
-            dcraw_cmd = ['dcraw', '-v', '-T', '-4', '-o', '6', '-q', '3', '-w', '-H', '0', '-W', '-c', input_image]
+            dcraw_cmd = ['dcraw', '-v', '-T', '-4', '-o', '6',
+                         '-q', '3', '-w', '-H', '0', '-W', '-c', input_image]
 
             with open(tmp_output_image, "w") as output_file:
                 log.debug(' '.join(dcraw_cmd))
@@ -544,7 +564,8 @@ class Debayer():
                 log.error("Error Processing Result: " + error)
             if not os.path.isfile(tmp_output_image):
                 if retry < 3:
-                    self.debayer_image(input_image, output_image_path, retry=retry+1)
+                    self.debayer_image(
+                        input_image, output_image_path, retry=retry+1)
             else:
                 self.copy_metadata(input_image, tmp_output_image)
                 return tmp_output_image
@@ -564,20 +585,23 @@ class Debayer():
             if error:
                 log.error("Error Processing Result: " + error)
             if not os.path.isfile(tmp_output_image):
-                log.warning("Output file did not generate:\n\t{0}".format(tmp_output_image))
+                log.warning(
+                    "Output file did not generate:\n\t{0}".format(tmp_output_image))
                 if retry < 1:
-                    self.debayer_image(input_image, output_image_path, retry=retry+1)
+                    self.debayer_image(
+                        input_image, output_image_path, retry=retry+1)
             else:
                 output_size, output_size_str = self.get_size(tmp_output_image)
                 log.debug("Output size is: {0}".format(output_size_str))
                 if output_size > 0.01:
                     return tmp_output_image
                 else:
-                    log.warning("File size of output is less than 4kb, processing again...")
+                    log.warning(
+                        "File size of output is less than 4kb, processing again...")
                     os.remove(tmp_output_image)
                     if retry < 1:
-                        self.debayer_image(input_image, output_image_path, retry=retry+1)
-
+                        self.debayer_image(
+                            input_image, output_image_path, retry=retry+1)
 
     def convert_image(self, src_img, dst_img, output_format="exr"):
         ''' Convert src_img to specified format at dst_img
@@ -589,7 +613,8 @@ class Debayer():
         # calculate new autoexposure for each frame if self.autoexpose_each
         if self.autoexpose_each:
             self.autoexposure = self.calc_autoexposure(src_img)
-            log.info("autoexposure {0} for {1}".format(self.autoexposure, os.path.basename(src_img)))
+            log.info("autoexposure {0} for {1}".format(
+                self.autoexposure, os.path.basename(src_img)))
 
         dst_img = dst_img + ".{0}".format(output_format)
         oiiotool_cmd = [self.oiiotool, '-v', src_img]
@@ -658,9 +683,9 @@ class Debayer():
                 self.copy_metadata(src_img, dst_img)
             return dst_img
         else:
-            log.error("Output {0} file did not generate!".format(output_format))
+            log.error(
+                "Output {0} file did not generate!".format(output_format))
             return None
-
 
     def calc_autoexposure(self, imgpath):
         '''
@@ -670,7 +695,8 @@ class Debayer():
         try:
             import OpenImageIO as oiio
         except ImportError:
-            log.error("Missing dependencies. Please install OpenImageIO to enable autoexposure. Using default exposure of 1.0")
+            log.error(
+                "Missing dependencies. Please install OpenImageIO to enable autoexposure. Using default exposure of 1.0")
             return 1.0
         # Create ImageBuf from ImageInput
         imgbuf = oiio.ImageBuf(imgpath)
@@ -678,13 +704,14 @@ class Debayer():
 
         # Construct ROI from self.autoexposure_center_percentage
         center = (int(imgspec.width/2), int(imgspec.height/2))
-        size = (int(imgspec.width * self.autoexposure_center_percentage), int(imgspec.height * self.autoexposure_center_percentage))
+        size = (int(imgspec.width * self.autoexposure_center_percentage),
+                int(imgspec.height * self.autoexposure_center_percentage))
 
-        box_roi = oiio.ROI(int(center[0]-size[0]/2), int(center[0]+size[0]/2), int(center[1]-size[1]/2), int(center[1]+size[1]/2))
+        box_roi = oiio.ROI(int(center[0]-size[0]/2), int(center[0]+size[0]/2),
+                           int(center[1]-size[1]/2), int(center[1]+size[1]/2))
         pixels = imgbuf.get_pixels(format=oiio.FLOAT, roi=box_roi)
         img_average = pixels.mean()
         return self.autoexposure_target / img_average
-
 
     def copy_metadata(self, src, dst):
         '''Uses exiftool to copy all metadata from src image path to dst image path
@@ -693,7 +720,8 @@ class Debayer():
             dst {str} -- image path of destination
         '''
         if self.exiftool:
-            exiftool_cmd = [self.exiftool, '-overwrite_original', '-tagsFromFile', src, dst]
+            exiftool_cmd = [self.exiftool,
+                            '-overwrite_original', '-tagsFromFile', src, dst]
             log.debug('Copying exif metadata from raw')
             log.debug(' '.join(exiftool_cmd))
             exiftool_proc = subprocess.Popen(exiftool_cmd)
@@ -707,16 +735,15 @@ class Debayer():
             log.error("Error: exiftool not found. Will skip setting the metadata")
             return None
 
-
     def get_size(self, filepath, suffix='B'):
         ''' Return filesize of filepath '''
         num = os.path.getsize(filepath)
-        for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
+        for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
             if abs(num) < 1024.0:
                 return num, "%3.1f%s%s" % (num, unit, suffix)
             num /= 1024.0
         return num, "%.1f%s%s" % (num, 'Yi', suffix)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     Debayer()
