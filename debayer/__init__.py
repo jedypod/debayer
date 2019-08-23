@@ -307,7 +307,7 @@ class Debayer():
             log.debug("Chromatic Aberration specified: Creating temp profile: {0}".format(
                 tmp_profile))
             shutil.copyfile(self.profile, tmp_profile)
-            cmd = ['sed', '-i', '-e', 's/CA=false/CA=true/', tmp_profile]
+            cmd = ['sed', '-i', '-e', "'s/CA=false/CA=true/'", tmp_profile]
             log.debug(' '.join(cmd))
             sed_proc = subprocess.Popen(cmd)
             result, error = sed_proc.communicate()
@@ -644,11 +644,11 @@ class Debayer():
         if self.autoexposure != 1.0:
             exp = str(self.autoexposure)
             exp = [exp, exp, exp, '1.0']
-            oiiotool_cmd += [--mulc, ','.join(exp)]
+            oiiotool_cmd += ['--mulc', ','.join(exp)]
         if self.exposure:
             exp = str(self.exposure)
             exp = [exp, exp, exp, '1.0']
-            oiiotool_cmd += [--mulc, ','.join(exp)]
+            oiiotool_cmd += ['--mulc', ','.join(exp)]
 
         # Validate OCIO stuff
         if self.colorspaces_out:
