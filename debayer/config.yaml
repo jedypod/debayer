@@ -48,9 +48,9 @@ default_output_formats: [exr]
 # Tiff compression: "none", "lzw", "zip" (deflate), "ccittrle"
 # Jpeg compression: --quality <int> --attrib "jpeg:subsampling" "4:2:2" --resize 50%
 compression:
-  exr: --compression dwaa:45
-  tif: --compression zip
-  jpg: --quality 90 --attrib "jpeg:subsampling" "4:2:2"
+  exr: ["--compression", "dwaa:45"]
+  tif: ["--compression", "zip"]
+  jpg: ["--quality", "90", "--attrib", "jpeg:subsampling", "4:2:2"]
 
 # oiiotool resize argument: e.g. 1920x1080, 1920x0 (resizes height to match input AR), 50%, 25%
 # TODO: Only active if -r not specified on commandline for now

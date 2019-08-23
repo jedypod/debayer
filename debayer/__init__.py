@@ -100,44 +100,43 @@ class Debayer():
                     self.rawtherapee_cli = location
                 else:
                     self.rawtherapee_cli = distutils.spawn.find_executable(location)
-                if self.rawtherapee_cli:
-                    if not os.path.exists(self.rawtherapee_cli):
-                        log.error("Error: rawtherapee-cli does not exist: \t{0}".format(self.rawtherapee_cli))
-                        self.rawtherapee_cli = None
-                        return None
+                if not self.rawtherapee_cli or not os.path.exists(self.rawtherapee_cli):
+                    msg = 'rawtherapee-cli executable count not be found in "{}".'
+                    log.error(msg.format(self.rawtherapee_cli))
+                    self.rawtherapee_cli = None
+                    return None
 
             elif exe == "dcraw":
                 if exe.startswith(os.path.sep):
                     self.dcraw = location
                 else:
                     self.dcraw = distutils.spawn.find_executable(location)
-                if self.dcraw:
-                    if not os.path.exists(self.dcraw):
-                        log.error("Error: dcraw does not exist: \t{0}".format(self.oiiotool))
-                        self.dcraw = None
+                if not self.dcraw or not os.path.exists(self.dcraw):
+                    msg = 'dcraw executable count not be found in "{}".'
+                    log.error(msg.format(self.dcraw))
+                    self.dcraw = None
 
             elif exe == "oiiotool":
                 if exe.startswith(os.path.sep):
                     self.oiiotool = location
                 else:
                     self.oiiotool = distutils.spawn.find_executable(location)
-                if self.oiiotool:
-                    if not os.path.exists(self.oiiotool):
-                        log.error("Error: oiiotool does not exist: \t{0}".format(self.oiiotool))
-                        self.oiiotool = None
-                        return None
+                if not self.oiiotool or not os.path.exists(self.oiiotool):
+                    msg = 'oiiotool executable count not be found in "{}".'
+                    log.error(msg.format(self.oiiotool))
+                    self.oiiotool = None
+                    return None
 
-            elif exe == "exiftool":
+            elif exe == 'exiftool':
                 if exe.startswith(os.path.sep):
                     self.exiftool = location
                 else:
                     self.exiftool = distutils.spawn.find_executable(location)
-                if self.exiftool:
-                    if not os.path.exists(self.exiftool):
-                        # If no exiftool, we'll just skip tif metadata copying
-                        log.error("Error: exiftool does not exist. No metadata will be copied to tif files")
-                        self.exiftool = None
-
+                if not self.exiftool or not os.path.exists(self.exiftool):
+                    # If no exiftool, we'll just skip tif metadata copying.
+                    msg = 'exiftool executable count not be found in "{}". No metadata will be copied to tif files.'
+                    log.error(msg.format(self.exiftool))
+                    self.exiftool = None
 
         self.profile = self.config.get('rt_default_profile')
         possible_output_formats = self.config.get('possible_output_formats')
@@ -150,12 +149,13 @@ class Debayer():
         self.default_autoexposure = self.config.get('autoexpose')
         self.autoexposure_target = self.config.get('autoexposure_target')
         self.autoexposure_center_percentage = self.config.get('autoexposure_center_percentage')
-        self.ocioconfig = self.config.get('default_ocioconfig')
+        self.ocioconfig = self.config.get('default_ocioconfig') or ''
         self.resize_filter = self.config.get('resize_filter')
         self.default_format_resize = self.config.get('default_format_resize')
 
         self.raw_formats = self.config.get('raw_formats')
         self.raw_formats = self.raw_formats + [r.upper() for r in self.raw_formats]
+
         log.debug("Processing raw formats:\n" + " ".join(self.raw_formats))
 
         # Get commandline arguments
@@ -296,8 +296,8 @@ class Debayer():
             tmp_profile = os.path.join(self.tmp_dir, os.path.basename(self.profile))
             log.debug("Chromatic Aberration specified: Creating temp profile: {0}".format(tmp_profile))
             shutil.copyfile(self.profile, tmp_profile)
-            cmd = "sed -i -e 's/CA=false/CA=true/' {0}".format(tmp_profile)
-            log.debug(cmd)
+            cmd = ['sed', '-i', '-e', 's/CA=false/CA=true/', tmp_profile]
+            log.debug(' '.join(cmd))
             sed_proc = subprocess.Popen(cmd)
             result, error = sed_proc.communicate()
             if not error:
@@ -361,7 +361,7 @@ class Debayer():
                 if output_formats_string in possible_output_formats:
                     self.output_formats.append(output_formats_string)
             if not self.output_formats:
-                log.error("Error: Invalid output format specified.")
+                log.error('Error: Invalid output format specified')
                 return None
 
         # OCIO Config Setup
@@ -370,17 +370,17 @@ class Debayer():
             self.ocioconfig = os.path.realpath(self.ocioconfig)
             self.ocioconfig = os.path.expanduser(self.ocioconfig)
             if not os.path.isfile(self.ocioconfig):
-                log.error("Error: Specified OCIO Config does not exist.")
-                self.ocioconfig = None
+                log.error('Error: Specified OCIO Config does not exist')
+                self.ocioconfig = ''
         if not self.ocioconfig:
             env_ocio = os.getenv("OCIO")
             if env_ocio:
                 self.ocioconfig = env_ocio
         if not os.path.exists(self.ocioconfig):
-            log.warning("OCIO Config does not exist: \n\t{0}\n\tNo OCIO color transform will be applied".format(
+            log.warning('OCIO Config does not exist: \n\t{0}\n\tNo OCIO color transform will be applied'.format(
                 self.ocioconfig))
             self.ocioconfig = None
-        log.debug("OCIO Config: {0}".format(self.ocioconfig))
+        log.debug('OCIO Config: {0}'.format(self.ocioconfig))
 
         # OCIO Colorspace for output image
         if args.colorspaces_out:
@@ -406,7 +406,7 @@ class Debayer():
             log.debug("Found these image sequences:\n" + "\n".join([img[1].path() for img in self.image_sequences]))
             return True
         else:
-            log.error("Found no image sequences... Please try again.")
+            log.error('Found no image sequences... Please try again')
             return False
 
 
@@ -531,10 +531,10 @@ class Debayer():
 
             # dcraw tutorial: http://www.guillermoluijk.com/tutorial/dcraw/index_en.htm
             # rawpy might be another option https://letmaik.github.io/rawpy/api/rawpy.Params.html#rawpy.Params
-            dcraw_cmd = "dcraw -v -T -4 -o 6 -q 3 -w -H 0 -W -c '{0}'".format(input_image)
+            dcraw_cmd = ['dcraw', '-v', '-T', '-4', '-o', '6', '-q', '3', '-w', '-H', '0', '-W', '-c', input_image]
 
             with open(tmp_output_image, "w") as output_file:
-                log.debug(dcraw_cmd)
+                log.debug(' '.join(dcraw_cmd))
                 dcraw_proc = subprocess.Popen(
                     dcraw_cmd,
                     stdout=output_file
@@ -550,13 +550,11 @@ class Debayer():
                 return tmp_output_image
 
         elif self.debayer_engine == "rt":
-            rtcli_cmd = '"{0}" -o "{1}" -p "{2}" -b16f -Y -q -f -t -c {3}'.format(
-                self.rawtherapee_cli,
-                tmp_output_image,
-                self.profile,
-                input_image
-            )
-            log.debug(rtcli_cmd)
+            rtcli_cmd = [
+                self.rawtherapee_cli, '-o', tmp_output_image, '-p',
+                self.profile, '-b16f', '-Y', '-q', '-f', '-t', '-c', input_image,
+            ]
+            log.debug(' '.join(rtcli_cmd))
             rtcli_proc = subprocess.Popen(
                 rtcli_cmd,
                 stdin=subprocess.PIPE,
@@ -594,56 +592,64 @@ class Debayer():
             log.info("autoexposure {0} for {1}".format(self.autoexposure, os.path.basename(src_img)))
 
         dst_img = dst_img + ".{0}".format(output_format)
-
-        oiiotool_cmd = '"{0}" -v "{1}"'.format(self.oiiotool, src_img)
+        oiiotool_cmd = [self.oiiotool, '-v', src_img]
 
         # Setup resize string
-        resize_string = " --rangecompress --resize"
+        resize_list = ['--rangecompress']
         if self.resize_filter:
-            resize_string +=":filter={0}".format(self.resize_filter)
+            resize_list.append('--resize:filter={}'.format(self.resize_filter))
+        else:
+            resize_list.append('--resize')
 
         current_format_resize = self.default_format_resize[output_format]
         if current_format_resize:
             resize = current_format_resize
         else:
             resize = self.resize
-        resize_string += " {0} --rangeexpand".format(resize)
+        resize_list += [resize, '--rangeexpand']
 
         if resize:
-            oiiotool_cmd += resize_string
+            oiiotool_cmd += resize_list
 
         # Specify datatype
         if output_format in self.datatypes:
             if self.datatypes[output_format] in ["uint8", "sint8", "uint10", "uint12", "uint16", "sint16", "uint32", "sint32", "half", "float", "double"]:
-                oiiotool_cmd += " -d {0}".format(self.datatypes[output_format])
+                oiiotool_cmd += ['-d', self.datatypes[output_format]]
 
         if self.autoexposure != 1.0:
-            oiiotool_cmd += " --mulc {0},{0},{0},1.0".format(self.autoexposure)
+            exp = str(self.autoexposure)
+            exp = [exp, exp, exp, '1.0']
+            oiiotool_cmd += [--mulc, ','.join(exp)]
         if self.exposure:
-            oiiotool_cmd += " --mulc {0},{0},{0},1.0".format(self.exposure)
+            exp = str(self.exposure)
+            exp = [exp, exp, exp, '1.0']
+            oiiotool_cmd += [--mulc, ','.join(exp)]
 
         # Validate OCIO stuff
         if self.colorspaces_out:
             if output_format in self.colorspaces_out:
                 if self.ocioconfig:
-                    oiiotool_cmd += " --colorconfig \"{0}\" --colorconvert \"{1}\" \"{2}\"".format(
+                    oiiotool_cmd += [
+                        '--colorconfig',
                         self.ocioconfig,
+                        '--colorconvert',
                         self.colorspace_in,
-                        self.colorspaces_out[output_format]
-                    )
-
+                        self.colorspaces_out[output_format],
+                    ]
 
         # Output format compression options
         if self.compression:
             if output_format in self.compression:
-                oiiotool_cmd += " {0}".format(self.compression[output_format])
+                oiiotool_cmd += self.compression[output_format]
 
         # Output image
-        oiiotool_cmd += " -o {0}".format(dst_img)
-        log.debug(oiiotool_cmd)
-        oiiotool_proc = subprocess.Popen(oiiotool_cmd,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE)
+        oiiotool_cmd += ['-o', dst_img]
+        log.debug(' '.join(oiiotool_cmd))
+        oiiotool_proc = subprocess.Popen(
+            oiiotool_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE
+        )
         result, error = oiiotool_proc.communicate()
 
         if os.path.isfile(dst_img):
@@ -664,7 +670,7 @@ class Debayer():
         try:
             import OpenImageIO as oiio
         except ImportError:
-            log.error("Error: Missing dependencies. Please install OpenImageIO to enable autoexposure. Using default exposure of 1.0")
+            log.error("Missing dependencies. Please install OpenImageIO to enable autoexposure. Using default exposure of 1.0")
             return 1.0
         # Create ImageBuf from ImageInput
         imgbuf = oiio.ImageBuf(imgpath)
@@ -687,8 +693,9 @@ class Debayer():
             dst {str} -- image path of destination
         '''
         if self.exiftool:
-            exiftool_cmd = "{0} -overwrite_original -tagsFromFile {1} {2}".format(self.exiftool, src, dst)
-            log.debug("Copying exif metadata from raw: \t{0}".format(exiftool_cmd))
+            exiftool_cmd = [self.exiftool, '-overwrite_original', '-tagsFromFile', src, dst]
+            log.debug('Copying exif metadata from raw')
+            log.debug(' '.join(exiftool_cmd))
             exiftool_proc = subprocess.Popen(exiftool_cmd)
             result, error = exiftool_proc.communicate()
             if error:
@@ -697,7 +704,7 @@ class Debayer():
             else:
                 return True
         else:
-            log.error("Error: exiftool not found. Will skip setting the metadata.")
+            log.error("Error: exiftool not found. Will skip setting the metadata")
             return None
 
 
@@ -712,4 +719,4 @@ class Debayer():
 
 
 if __name__=="__main__":
-    debayer = Debayer()
+    Debayer()
