@@ -83,7 +83,7 @@ class Debayer():
         # Get Config file data
         if os.path.isfile(CONFIG):
             with open(CONFIG, 'r') as configfile:
-                self.config = yaml.load(configfile)
+                self.config = yaml.load(configfile, Loader=yaml.FullLoader))
         else:
             log.error("Error: Could not find config file {0}".format(CONFIG))
             return None
