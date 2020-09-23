@@ -36,6 +36,7 @@ setup(
     author='Jedediah Smith',
     install_requires=[
         'pyseq==0.5.1',
+        'PyYAML',
     ],
     entry_points={
         'console_scripts': [
