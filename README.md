@@ -97,19 +97,27 @@ On OSX, [Homebrew](https://brew.sh) can easily be used to install the needed dep
 
 Pip can be used to install the python dependencies needed:
 
-`pip install PyYAML`
-
+`pip install debayer`
 
 ### Linux
 On Fedora Linux, most dependencies can be installed with the package manager.
 
 `dnf install python rawtherapee pip openimageio dcraw exiftool`
 
-`pip install --user PyYAML`
+`pip install debayer`
 
 For other distributions I'm assuming it would be pretty straightforward as well...
 
+### Windows
+On Windows you will have to download and install [Python](https://www.python.org/downloads). Make sure to you check the option to "Add Python to PATH".
 
+Install [ImageMagick](https://imagemagick.org/script/download.php#windows) and make sure the "Add application to your system path" option is checked.
+
+You will also have to install [RawTherapee](https://rawtherapee.com) and [ExifTool](https://exiftool.org). Make sure to edit your Windows environment variables to point to the folders holding these binaries.
+
+Debayer can be then installed using PyPi.
+
+`pip install debayer`
 
 ## The MIT License
 Copyright 2019 Jedediah Smith
