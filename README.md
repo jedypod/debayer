@@ -100,11 +100,24 @@ cd /media/footage/20211012
 debayer dng -o exr
 ```
 
+## Exposure
+One important parameter when debayering to scene-linear is how much to expose up with the `-e` parameter. Camera raw files are usually stored in an integer data format, which means the data is contained in a 0-1 container. How many bits of precision that data has within that container varies with the camera and sensor. 
+
+To get this 0-1 data range into sensible scene-linear data, we need to expose up the raw data so that an 18% grey diffuse reflector will live at a scene-linear value of around 0.18. How much we need to expose up will of course depend on how the image was exposed in the camera. This also determines how much headroom you will have in highlights. A default value of 4.0 is provided as a starting point, but you will probably want to customize this depending on your source raw images.
+
+## Custom Profile
 You can specify a custom rawtherapee config pp3 file with `-p path/to/file.pp3`. This is useful if you need to customize whitebalance or sharpening settings for examples.
 
 A default config is included in the repo and is used by default unless you change the `RT_DEFAULT_PROFILE` variable in the debayer code. This default profile outputs to linear ACEScg, and uses the RCD debayer algorithm, which is the best quality.
 
+## Debayer Algorithms
+If you are curious about the different available debayer algorithms in open software I have put together a big set of comparison images in jpg and exr available at this [mega.nz link](https://mega.nz/folder/ZEYg1bwL#jD1ED7P-D5srWdYR0PdP8A).
 
+The images are processed with `dcraw_emu` for AHD, AAHD, DHT and VNG, and with `rawtherapee-cli` for RCD, DCB and AMaZE. The test images are a selection of 256x128 pixel crops of interesting image regions for judging debayer quality. My subjective ranking would be
+
+```
+RCD > DHT > DCB > AMaZE > AAHD > AHD > VNG
+```
 
 # Installation
 
