@@ -1,73 +1,77 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 from __future__ import with_statement
-from __future__ import print_function
-from __future__ import division
 
-import os, sys, argparse, re
-import tempfile
+import os
+import sys
+import argparse
+import re
 import shutil
-import time, datetime
+import time
+import datetime
 import logging
-import subprocess, shlex
-import pyseq
+import subprocess
+import shlex
 import distutils.spawn
-import yaml
+
+''' -----------------------------------
+    CONFIGURATION
+'''
+
+# location of rawtherapee-cli
+RT_BIN = '/usr/bin/rawtherapee-cli'
+# location of oiiotool
+OIIO_BIN = '/usr/bin/oiiotool'
+
+DIR_PATH = os.path.dirname(os.path.realpath(__file__))
+
+# Cache directory for temp files
+CACHE_DIR = '/var/tmp/rt'
+
+# Default rawtherapee config file to use
+RT_DEFAULT_PROFILE = os.path.join(DIR_PATH, 'lin_ap1.pp3')
 
 
-# Get config yaml file
-dir_path = os.path.dirname(os.path.realpath(__file__))
-CONFIG = os.path.join(dir_path, "debayer-config.yaml")
+# Use dcraw for debayer instead of rawtherapee
+USE_DCRAW = False
+# location of dcraw_emu from LibRaw
+DCRAW_BIN = '/usr/bin/dcraw_emu'
+
+# Apply 3x3 color gamut conversion matrix
+USE_MATRIX = False
+mtx_XYZ_to_ACEScg = '1.65885437,-0.31185693,-0.24315603,-0.66228336,1.61220002,0.01585913,0.01148057,-0.00923633,0.91668653'
+mtx_ACES_to_ACEScg = '1.45143926,-0.23651077,-0.21492854,-0.07655376,1.17622995,-0.09967593,0.00831615,-0.00603245,0.99771643'
+OIIO_MATRIX = mtx_ACES_to_ACEScg
+
+# exr file compression: "none", "zip", "rle", "zips", "piz", "pxr24", "b44", "b44a", "dwaa:45", "dwab:45"
+EXR_COMPRESSION = 'dwaa:45'
+
+# Default raw to scene-linear exposure
+DEFAULT_EXPOSURE = '4.0'
+
+# oiiotool resize filter
+# # "box", "triangle", "gaussian", "sharp-gaussian", "catmull-rom", "blackman-harris", "sinc", "lanczos3", "mitchell", "bspline", "cubic", "keys", "simon", "rifman"
+RESIZE_FILTER = 'blackman-harris'
+
+# Supported raw file extensions (uppercase automatically added)
+RAW_FILE_FORMATS = ["crw", "cr2", "cr3", "dng", "nef", "nrw", "arw", "bay", 
+    "cap", "iiq", "eip", "dcs", "dcr", "drf", "kdc", "erf", "fff", "mef", 
+    "mdc", "mos", "mrw", "orf", "pef", "ptx", "raf", "raw", "rw2", "rwl", "srw", "x3f"]
+
+''' -----------------------------------
+'''
 
 # Set up logger # %(levelname)s %(asctime)s
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(message)s',
-    handlers=logging.StreamHandler(sys.stdout)
-    )
+    handlers=[logging.StreamHandler(sys.stdout)])
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
 class Debayer():
-    '''
-    Debayer is a class describing the conversion of a set of raw files into output images.
 
-    Attributes:
-        success (bool): True if everything is good to process images.
-        image_sequences (list): List of tuples containing root dir and pyseq image sequence objects.
-        autoexposure (float): auto exposure compensation.
-        profile:
-        possible_output_formats:
-        output_formats:
-        compression:
-        datatypes:
-        debayer_engine:
-        colorspace_in:
-        colorspaces_out:
-        default_autoexposure:
-        autoexposure_target:
-        autoexposure_center_percentage:
-        ocioconfig:
-        resize_filter:
-        default_format_resize:
-        raw_formats:
-    '''
     def __init__(self):
-
-        # Create tmp directory on local disk
-        self.tmp_dir = tempfile.mkdtemp()
-        log.debug("Temp Directory is {0}".format(self.tmp_dir))
-
-        self.success = self.validate()
-
-        if self.success:
-            self.process()
-
-        # Remove temp directory
-        if self.tmp_dir:
-            shutil.rmtree(self.tmp_dir)
-
-    def validate(self):
         '''
         Validate everything necessary to begin work:
             - Gather settings from the config file
@@ -76,6 +80,8 @@ class Debayer():
             - Gather all inpput images
         '''
 
+<<<<<<< HEAD
+=======
         # Set up logger and gather input variables
         self.image_sequences = []
         self.autoexposure = 1.0
@@ -155,138 +161,145 @@ class Debayer():
         self.raw_formats = self.raw_formats + [r.upper() for r in self.raw_formats]
         log.debug("Processing raw formats:\n" + " ".join(self.raw_formats))
 
+>>>>>>> master
         # Get commandline arguments
         parser = argparse.ArgumentParser(
-                            description="Debayer raw files to output images. For each of one or more input directories,\n"
-                                        "recursively find all raw files, recreate the directory structure, and convert to output images in destination directory")
-
-        parser.add_argument("-v", "--verbose",
-                            action="store_true",
-                            help="Output lots of useless information.",
-                            required=False)
-
+                            description="Debayer is a commandline tool to convert camera raw images into scene-linear exr.")
+        
         parser.add_argument("input_paths",
-                            help="Source(s) to process. Can one or more directories or raw images.",
+                            help="Source(s) to process. Can be one or more images or directories containing images.",
                             type=str,
                             action='store',
                             nargs='+')
-
+        
         parser.add_argument("-o", "--output",
                             help="Output directory. If not specified, the current directory will be used.",
                             required=False)
-
+        
         parser.add_argument("-w", "--overwrite",
                             action="store_true",
                             help="Overwrite existing output files.",
                             required=False)
-
-        parser.add_argument("-f", "--output_formats",
-                            help="Output image format. Default is exr.\n"
-                                 "This can be exr, tif, jpg. Or a comma separated list like \"exr,jpg\"",
-                            required=False)
-
+        
         parser.add_argument("-p", "--profile",
                             help="Optional override to specify a custom rawtherapee pp3 profile to use.\n"
-                                 "If none, the default in the config file will be used.",
+                                "If none, the default config file will be used.",
                             required=False)
-
+        
         parser.add_argument("-ca", "--aberration",
                             help="Remove chromatic aberration (rawtherapee only)\n",
                             action="store_true",
                             required=False)
-
-        parser.add_argument("--ocioconfig",
-                            help="OCIO config to use. If none specified, a generic ACES config will be used, which should handle most common color transforms.",
-                            required=False)
-
-        parser.add_argument("-c", "--colorspaces_out",
-                            help="Output OCIO colorspace. If not specified the default defined in the config will be used.\n"
-                                 "format: <format>:<colorspace> - e.g. \"exr:lin_ap1,tif:lin_ap1,jpg:out_rec709\" or \n"
-                                 "\"exr:lin_sgamut3cine\" or \"ACES - ACEScg\"",
-                            required=False)
-
+        
         parser.add_argument("-r", "--resize",
                             help="Apply a resize to the output image. Aspect ratio is not preserved if both width and height are specified.\n"
-                                 "<width>x<height>. 1920x2348 (1x3) -> 5760x2348 -> 3840x1565 -> 2880x1174.\n"
-                                 "Or 1280x2160 (1x3) -> 3840x2160 -> 2560x1440 -> 1920x1080.\n"
-                                 "Or preserve aspect ratio if w or h = 0: e.g. \"1920x0\"\n"
-                                 "Can also be a percentage like \"50%%\"",
+                                "<width>x<height>.\n"
+                                "(ML 1x3) 1920x2348 -> 5760x2348 -> 3840x1565 -> 2880x1174\n"
+                                "(ML 1x3 2.35) - 1808x2300 -> (unsqueeze) 5424x2300 -> (0.5) 2712x1150\n"
+                                "Or 1280x2160 (1x3) -> 3840x2160 -> 2560x1440 -> 1920x1080\n"
+                                "Or preserve aspect ratio if w or h = 0: e.g. \"1920x0\"\n"
+                                "Can also be a percentage like \"50%%\"",
                             required=False)
-
+        
         parser.add_argument("-e", "--exposure",
                             type=float,
-                            help="Exposure adjust the output image. No autoexposure will be performed. e.g. 1.1 1.5 2.0",
+                            help="Raw to scene-linear exposure adjustment. Default is 4.0",
                             required=False)
-
-        parser.add_argument("-a", "--autoexpose",
-                            action="store_true",
-                            help="Auto expose. Image sequences will have static exposure adjustement.",
-                            required=False)
-
-        parser.add_argument("-ae", "--autoexpose_each",
-                            action="store_true",
-                            help="Auto expose each frame.",
-                            required=False)
-
-        parser.add_argument("-se", "--search_exclude",
-                            help="Strings to ignore. If image full path contains string, skip.\n"
+        
+        parser.add_argument("-f", "--filter",
+                            help="Include only files that match regex. \n"
                                  "Can be comma separated list.",
                             required=False)
 
-        parser.add_argument("-si", "--search_include",
-                            help="Only include files that contain <search_include>.\n"
-                                 "Can be comma separated list.",
-                            required=False)
-
-
+        
         # Show help if no args.
         if len(sys.argv)==1:
             parser.print_help()
             return None
 
+        # All recognized file extensions
+        self.raw_formats = RAW_FILE_FORMATS + [r.upper() for r in RAW_FILE_FORMATS]
+        
+        # list to hold inputs which are directories
+        self.input_dirs = list()
+        # list to hold raw images to process
+        self.raw_images = list()
+
         args = parser.parse_args()
 
-        if args.verbose:
-            log.setLevel(logging.DEBUG)
+        # Validate bin paths
+        self.rt_bin = RT_BIN
+        self.dcraw_bin = DCRAW_BIN
+        if USE_DCRAW:
+            if not os.path.exists(self.dcraw_bin):
+                log.error("Error: could not locate dcraw_emu")
+                return
+        else:
+            if not os.path.exists(self.rt_bin):
+                log.error("Error: could not locate rawtherapee-cli")
+                return
+        self.oiio_bin = OIIO_BIN
+        if not os.path.exists(self.oiio_bin):
+            log.error("Error: could not locate oiiotool")
+            return
 
-        input_dirs = []
+
+        # RawTherapee Profile
+        self.profile = args.profile
+        if self.profile:
+            self.profile = os.path.expanduser(self.profile)
+            self.profile = os.path.realpath(self.profile)
+        else:
+            self.profile = RT_DEFAULT_PROFILE
+        if not os.path.isfile(self.profile):
+            log.error("Error: Specified rawtherapee profile does not exist.")
+            return
+        
+        # Create temp directory
+        self.tmp_dir = CACHE_DIR
+        if not os.path.isdir(self.tmp_dir):
+            os.makedirs(self.tmp_dir)
+        log.info(self.tmp_dir)
+
+        # Search filter String
+        if args.filter:
+            if "," in args.filter:
+                filter_items = [i.strip for i in args.filter.rsplit(',')]
+            else:
+                filter_items = [args.filter.strip()]
+        else:
+            filter_items = list()
+        
+        self.filter_patterns = list()
+        if filter_items:
+            for pattern in filter_items:
+                self.filter_patterns.append(re.compile(pattern))
+
+        # Gather input paths
         if args.input_paths:
             for input_path in args.input_paths:
                 # Support ~ and relative paths
                 input_path = os.path.expanduser(input_path)
                 input_path = os.path.realpath(input_path)
                 if os.path.isdir(input_path):
-                    input_dirs.append(input_path)
+                    self.input_dirs.append(input_path)
                 elif os.path.isfile(input_path):
-                    # Directly add all raw images found to image_sequences list
-                    if "." in input_path:
-                        input_path_ext = input_path.split('.')[-1]
-                    if input_path_ext in self.raw_formats:
-                        self.image_sequences.append((os.path.dirname(input_path), pyseq.Sequence([input_path])))
+                    self.add_file(input_path)
+        if not self.raw_images and not self.input_dirs:
+            log.error('Error: No inputs specified.')
+            return
+
+        # Output directory
         if args.output:
             self.dst = args.output
             self.dst = os.path.expanduser(self.dst)
             self.dst = os.path.realpath(self.dst)
             if not os.path.isdir(self.dst):
                 os.makedirs(self.dst)
-
         else:
             self.dst = os.getcwd()
-
-        # RawTherapee Profile
-        if args.profile:
-            self.profile = args.profile
-        else:
-            # Allow relative pathing in config
-            if not self.profile.startswith(os.path.sep):
-                self.profile = os.path.join(dir_path, self.profile)
-        if self.profile:
-            self.profile = os.path.expanduser(self.profile)
-            self.profile = os.path.realpath(self.profile)
-        if not os.path.isfile(self.profile):
-            log.error("Error: Specified profile does not exist.")
-            return None
-
+    
+        # Chromatic aberration 
         self.aberration = args.aberration
         if self.aberration:
             # Copy pp3 profile to temp dir
@@ -298,412 +311,151 @@ class Debayer():
             if not error:
                 self.profile = tmp_profile
 
-        self.resize = args.resize
 
-
-        self.autoexpose = args.autoexpose
-        self.autoexpose_each = args.autoexpose_each
-
-        self.exposure = args.exposure
-        # No autoexposure if args.exposure is specified
-        if self.exposure:
-            self.autoexpose_each = None
-            self.autoexpose = None
-
-        # Default autoexposure if none specified
-        if not self.autoexpose and not self.autoexpose_each:
-            if self.default_autoexposure != "none":
-                if self.default_autoexposure == "a":
-                    self.autoexpose = True
-                elif self.default_autoexposure == "ae":
-                    self.autoexpose_each = True
-
-
-
-
-        # Ignore string
-        self.search_exclude = args.search_exclude
-        if self.search_exclude:
-            if "," in self.search_exclude:
-                self.search_exclude_list = [i.strip() for i in self.search_exclude.rsplit(',')]
-            else:
-                self.search_exclude_list = [self.search_exclude.strip()]
-        else:
-            self.search_exclude_list = None
-
-        # Search filter String
-        self.search_include = args.search_include
-        if self.search_include:
-            if "," in self.search_include:
-                self.search_include_list = [i.strip() for i in self.search_include.rsplit(',')]
-            else:
-                self.search_include_list = [self.search_include.strip()]
-        else:
-            self.search_include_list = None
-
+        
         self.overwrite = args.overwrite
 
-        # Output Format
-        if args.output_formats:
-            self.output_formats = []
-            output_formats_string = args.output_formats
-            if "," in output_formats_string:
-                for output_format in output_formats_string.split(','):
-                    if output_format in possible_output_formats:
-                        self.output_formats.append(output_format)
-            else:
-                # Assume it's just one format
-                if output_formats_string in possible_output_formats:
-                    self.output_formats.append(output_formats_string)
-            if not self.output_formats:
-                log.error("Error: Invalid output format specified.")
-                return None
+        self.resize = args.resize
 
-        # OCIO Config Setup
-        if args.ocioconfig:
-            self.ocioconfig = args.ocioconfig
-            self.ocioconfig = os.path.realpath(self.ocioconfig)
-            self.ocioconfig = os.path.expanduser(self.ocioconfig)
-            if not os.path.isfile(self.ocioconfig):
-                log.error("Error: Specified OCIO Config does not exist.")
-                self.ocioconfig = None
-        if not self.ocioconfig:
-            env_ocio = os.getenv("OCIO")
-            if env_ocio:
-                self.ocioconfig = env_ocio
-        if not os.path.exists(self.ocioconfig):
-            log.warning("OCIO Config does not exist: \n\t{0}\n\tNo OCIO color transform will be applied".format(
-                self.ocioconfig))
-            self.ocioconfig = None
-        log.debug("OCIO Config: {0}".format(self.ocioconfig))
+        self.resize_filter = RESIZE_FILTER
+        self.compression = EXR_COMPRESSION
+        self.exposure = args.exposure
+        if not self.exposure:
+            self.exposure = DEFAULT_EXPOSURE
 
-        # OCIO Colorspace for output image
-        if args.colorspaces_out:
-            self.colorspaces_out = {}
-            if "," in args.colorspaces_out:
-                entries = args.colorspaces_out.split(',')
-            else:
-                entries = [args.colorspaces_out]
-            for entry in entries:
-                if ":" in entry:
-                    output_format, colorspace = entry.split(':')
-                    self.colorspaces_out[output_format] = colorspace
-                else:
-                    # If no image format specified, assume exr
-                    self.colorspaces_out['exr'] = args.colorspaces_out
-            log.debug("Output Color Transform: {0}".format(self.colorspaces_out))
+        # process all raw images in input
+        self.raw_images.sort()
+        for image in self.raw_images:
+            self.process_image(image, self.dst)
 
-        # Find source raw images
-        for input_dir in input_dirs:
-            self.gather_images(input_dir)
-
-        if self.image_sequences:
-            log.debug("Found these image sequences:\n" + "\n".join([img[1].path() for img in self.image_sequences]))
-            return True
-        else:
-            log.error("Found no image sequences... Please try again.")
-            return False
-
-
-    def process(self):
-        '''
-        Convert every raw image in image_sequences into the output format(s).
-        '''
-
-        # Loop through all found image sequences to process
-        for root_dir, sequence in self.image_sequences:
-            if len(sequence) > 2:
-                log.info("Debayering image sequence:\n\t{0}".format(os.path.join(sequence.dirname, sequence.format('%h%p%t %r'))))
-
-            # Create destination directories if they don't exist
-            dst_dir = self.dstconv(sequence.dirname, root_dir)
-            if not os.path.isdir(dst_dir):
-                os.makedirs(dst_dir)
-
-            if self.autoexpose:
-                # Get autoexposure from middle frame
-                middle_frame = sequence[int(sequence.length() / 2)]
-                if not self.autoexpose_each:
-                    # temp debayer for auto exposure
-                    output_image_path = self.dstconv(middle_frame.path, root_dir)
-                    output_image_path = os.path.splitext(output_image_path)[0]
-                    tmp_output_image = self.debayer_image(middle_frame.path, output_image_path)
-                    if tmp_output_image:
-                        self.autoexposure = self.calc_autoexposure(tmp_output_image)
-                        log.info("Auto exposure:\n\t{0} calculated from middle frame: {1}".format(
-                            self.autoexposure, os.path.basename(middle_frame))
-                            )
-                        os.remove(tmp_output_image)
-                    else:
-                        log.error("Error: Could not calc autoexposure. Setting to 1.0")
-                        self.autoexposure = 1.0
-            else:
-                self.autoexposure = 1.0
-
-            # Loop through all images in sequence
-            for image in sequence:
+        # Process input_dirs
+        for input_dir in self.input_dirs:
+            self.raw_images = list()
+            
+            # Gather all raw images in input_dirs
+            for root, directories, filenames in os.walk(input_dir):
+                for filename in filenames:
+                    fpath = os.path.join(root, filename)
+                    self.add_file(fpath)
+            
+            self.raw_images.sort()
+            for imgpath in self.raw_images:
                 start_time = time.time()
+                # All directories below input_dir will be reconstructed in out_dir
+                out_subdir = imgpath.split(input_dir)[-1]
+                if out_subdir.startswith(os.path.sep):
+                    out_subdir = out_subdir[1:]
+                out_dir = os.path.join(self.dst, out_subdir)
+                out_dir = os.path.dirname(out_dir)
+                
+                self.process_image(imgpath, out_dir)
 
-                output_image_path = self.dstconv(image.path, root_dir)
-                output_image_path = os.path.splitext(output_image_path)[0]
-                log.info("\nsrc: \t{0}".format(image.path))
-
-                # Debayer image to temp tif file
-                tmp_output_image = self.debayer_image(image.path, output_image_path)
-                if tmp_output_image:
-                    for output_format in self.output_formats:
-                        output_image = self.convert_image(tmp_output_image, output_image_path, output_format=output_format)
-                        log.info("dst:\t{0}".format(output_image))
-                    elapsed_time = datetime.timedelta(seconds = time.time() - start_time)
-                    log.info("time: \t{0}".format(elapsed_time))
-                    # Clean up file
-                    os.remove(tmp_output_image)
+                elapsed_time = datetime.timedelta(seconds = time.time() - start_time)
+                log.info("time: \t{0}".format(elapsed_time))
 
 
-    def dstconv(self, src_path, toplevel_dir, dst_path=None):
+
+    def add_file(self, fpath):
+        ''' Validate that input path is a valid raw image, apply filter rules
+            :param fpath: string of file path to validate.
+        ''' 
+        if os.path.isfile(fpath):
+            if "." in fpath:
+                fpath_ext = fpath.split('.')[-1]
+            if fpath_ext in self.raw_formats:
+                # filter based on filter_list if it exists
+                if self.filter_patterns:
+                    log.debug("Checking for pattern in {0}".format(fpath))
+                    for pattern in self.filter_patterns:
+                        match = pattern.search(fpath)
+                        if match:
+                            log.debug("Match: {0}".format(match.group()))
+                            if fpath not in self.raw_images:
+                                self.raw_images.append(fpath)
+                else:
+                    if fpath not in self.raw_images:
+                        self.raw_images.append(fpath)
+
+
+
+    def process_image(self, imgpath, dstdir):
+        ''' Debayer and convert to exr target input image path
+            :param imgpath: string - raw image path to process
+            :param dstdir: string - destination directory to process into
         '''
-        Convert src_path to dstpath, reconstructing path under rootpath in dstpath.
-        :param src_path: source path to convert.
-        :param toplevel_dir: directory to split src_path in order to generate destination path.
-        :param dst_path: optional destination path override. Otherwise class attrib dst will be used.
-        '''
-        if not dst_path:
-            dst_path = self.dst
-        return dst_path + src_path.split(toplevel_dir)[-1]
+        log.info('Processing:\n\t{0}'.format(imgpath))
 
+        img_dir, img_name = os.path.split(imgpath)
+        img_basename, img_ext = os.path.splitext(img_name)
 
-    def gather_images(self, source_dir):
-        '''
-        Gather all image sequences found in source dir and add to self.image_sequences.
-        Args:
-            source_dir: The directory path to process.
-        '''
-        generator = pyseq.walk(source_dir, -1)
-        if generator:
-            for path, parentdir, sequences in generator:
-                for sequence in sequences:
-                    file_extension = os.path.splitext(sequence.path())[1][1:].strip()
-                    if file_extension in self.raw_formats:
-                        self.image_sequences.append((source_dir, sequence))
+        tmp_dstpath = os.path.join(self.tmp_dir, img_basename + '.tif')
+        
+        if not os.path.isdir(dstdir):
+            os.makedirs(dstdir)
+        dstpath = os.path.join(dstdir, img_basename + '.exr')
 
-
-    def debayer_image(self, input_image, output_image_path, retry=0):
-        '''
-        Debayer the given input image into a scene-linear float tiff file
-        :param input_image: (str) Input path of image to debayer.
-        :param output_image_path: (str) path of output image without file extension
-        :param retry: (int) retry level to control recursion.
-        '''
-
-        # Skip existing output image files unless self.overwrite is enabled
         if not self.overwrite:
-            for image_format in self.output_formats:
-                final_output_image = output_image_path + ".{0}".format(image_format)
-                if os.path.exists(final_output_image) and self.get_size(final_output_image)[0] > 0.01:
-                    log.warning("skip existing:\t{0}".format(final_output_image))
-                    return None
-        # Skip files in ignore_list
-        if self.search_exclude_list:
-            for ignore_item in self.search_exclude_list:
-                if ignore_item in input_image:
-                    log.warning("exlude ignore:\t{0}".format(input_image))
-                    return None
-        # Only process files in filter list
-        if self.search_include_list:
-            for include_item in self.search_include_list:
-                if include_item not in input_image:
-                    log.warning("exluded:\t{0}".format(input_image))
-                    return None
+            # check if output file exists already
+            if os.path.exists(dstpath):
+                log.error('Skipping existing output image:\n\t{0}'.format(dstpath))
+                return
 
-        tmp_output_image = os.path.join(self.tmp_dir, os.path.basename(output_image_path)) + ".tif"
-
-        log.debug("tmp:\t{0}".format(tmp_output_image))
-
-        if self.debayer_engine == "dcraw":
-            if not self.dcraw:
-                log.error("Error: dcraw executable not found. Exiting...")
-                return None
-
-            # dcraw tutorial: http://www.guillermoluijk.com/tutorial/dcraw/index_en.htm
-            # rawpy might be another option https://letmaik.github.io/rawpy/api/rawpy.Params.html#rawpy.Params
-            dcraw_cmd = "dcraw -v -T -4 -o 6 -q 3 -w -H 0 -W -c '{0}'".format(input_image)
-
-            with open(tmp_output_image, "w") as output_file:
-                dcraw_proc = subprocess.Popen(
-                    shlex.split(dcraw_cmd),
-                    stdout=output_file
-                    )
+        if USE_DCRAW:
+            # dcraw_emu debayer
+            dcraw_cmd = '"{0}" -4 -T -q 11 -w -o 6 -H 0 -Z - "{1}"'.format(
+                self.dcraw_bin,
+                imgpath,
+                )
+            with open(tmp_dstpath, "w") as output_file:
+                dcraw_proc = subprocess.Popen(shlex.split(dcraw_cmd), stdout=output_file)
             result, error = dcraw_proc.communicate()
             if error:
                 log.error("Error Processing Result: " + error)
-            if not os.path.isfile(tmp_output_image):
-                if retry < 3:
-                    self.debayer_image(input_image, output_image_path, retry=retry+1)
-            else:
-                self.copy_metadata(input_image, tmp_output_image)
-                return tmp_output_image
 
-        elif self.debayer_engine == "rt":
-            rtcli_cmd = "{0} -o {1} -p {2} -b16f -Y -q -f -t -c {3}".format(
-                self.rawtherapee_cli,
-                tmp_output_image,
+        else:
+            # rawtherapee debayer 
+            rt_cmd = '{0} -o "{1}" -p "{2}" -b16 -Y -q -f -t -c "{3}"'.format(
+                self.rt_bin,
+                self.tmp_dir,
                 self.profile,
-                input_image
+                imgpath,
             )
-            log.debug(rtcli_cmd)
-            rtcli_proc = subprocess.Popen(
-                shlex.split(rtcli_cmd),
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE
-                )
-            result, error = rtcli_proc.communicate()
+
+            # log.info(rt_cmd)
+            rt_proc = subprocess.Popen(
+                shlex.split(rt_cmd), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            result, error = rt_proc.communicate()
             if error:
                 log.error("Error Processing Result: " + error)
-            if not os.path.isfile(tmp_output_image):
-                log.warning("Output file did not generate:\n\t{0}".format(tmp_output_image))
-                if retry < 1:
-                    self.debayer_image(input_image, output_image_path, retry=retry+1)
-            else:
-                output_size, output_size_str = self.get_size(tmp_output_image)
-                log.debug("Output size is: {0}".format(output_size_str))
-                if output_size > 0.01:
-                    return tmp_output_image
-                else:
-                    log.warning("File size of output is less than 4kb, processing again...")
-                    os.remove(tmp_output_image)
-                    if retry < 1:
-                        self.debayer_image(input_image, output_image_path, retry=retry+1)
+        
+        if not os.path.isfile(tmp_dstpath):
+            log.error("Output file did not generate:\n\t{0}".format(tmp_dstpath))
 
+        # oiiotool convert tiff to exr
+        oiio_cmd = '"{0}" -v "{1}"'.format(self.oiio_bin, tmp_dstpath)
+        
+        if self.resize:
+            oiio_cmd += ' --resize {0}:filter={1}'.format(self.resize, self.resize_filter)
+        
+        oiio_cmd += ' -d half'
+        oiio_cmd += ' --mulc {0}'.format(self.exposure)
+        if USE_MATRIX:
+            oiio_cmd += ' -ccmatrix:transpose=1 {0}'.format(OIIO_MATRIX)
+        oiio_cmd += ' --compression {0}'.format(self.compression)
+        oiio_cmd += ' -o {0}'.format(dstpath)
 
-    def convert_image(self, src_img, dst_img, output_format="exr"):
-        ''' Convert src_img to specified format at dst_img
-            Args:
-                src_img: (str) Source path of raw image to convert.
-                dst_img: (str) Destination path of image to output, with file extension removed.
-                output_formats: (str) Output image format to convert to.
-        '''
-        # calculate new autoexposure for each frame if self.autoexpose_each
-        if self.autoexpose_each:
-            self.autoexposure = self.calc_autoexposure(src_img)
-            log.info("autoexposure {0} for {1}".format(self.autoexposure, os.path.basename(src_img)))
-
-        dst_img = dst_img + ".{0}".format(output_format)
-
-        oiiotool_cmd = "{0} -v {1}".format(self.oiiotool, src_img)
-
-        # Setup resize string
-        resize_string = " --rangecompress --resize"
-        if self.resize_filter:
-            resize_string +=":filter={0}".format(self.resize_filter)
-
-        current_format_resize = self.default_format_resize[output_format]
-        if current_format_resize:
-            resize = current_format_resize
-        else:
-            resize = self.resize
-        resize_string += " {0} --rangeexpand".format(resize)
-
-        if resize:
-            oiiotool_cmd += resize_string
-
-        # Specify datatype
-        if output_format in self.datatypes:
-            if self.datatypes[output_format] in ["uint8", "sint8", "uint10", "uint12", "uint16", "sint16", "uint32", "sint32", "half", "float", "double"]:
-                oiiotool_cmd += " -d {0}".format(self.datatypes[output_format])
-
-        if self.autoexposure != 1.0:
-            oiiotool_cmd += " --mulc {0},{0},{0},1.0".format(self.autoexposure)
-        if self.exposure:
-            oiiotool_cmd += " --mulc {0},{0},{0},1.0".format(self.exposure)
-
-        # Validate OCIO stuff
-        if self.colorspaces_out:
-            if output_format in self.colorspaces_out:
-                if self.ocioconfig:
-                    oiiotool_cmd += " --colorconfig \"{0}\" --colorconvert \"{1}\" \"{2}\"".format(
-                        self.ocioconfig,
-                        self.colorspace_in,
-                        self.colorspaces_out[output_format]
-                    )
-
-
-        # Output format compression options
-        if self.compression:
-            if output_format in self.compression:
-                oiiotool_cmd += " {0}".format(self.compression[output_format])
-
-        # Output image
-        oiiotool_cmd += " -o {0}".format(dst_img)
-        log.debug(oiiotool_cmd)
-        oiiotool_proc = subprocess.Popen(shlex.split(oiiotool_cmd),
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE)
-        result, error = oiiotool_proc.communicate()
-
-        if os.path.isfile(dst_img):
-            # Copy metadata for tif output
-            if output_format == "tif":
-                self.copy_metadata(src_img, dst_img)
-            return dst_img
-        else:
-            log.error("Output {0} file did not generate!".format(output_format))
-            return None
-
-
-    def calc_autoexposure(self, imgpath):
-        '''
-        Calculate an autoexposure value based on an average pixel sample.
-        :param imgpath: (str) path of image to sample.
-        '''
-        try:
-            import OpenImageIO as oiio
-        except ImportError:
-            log.error("Error: Missing dependencies. Please install OpenImageIO to enable autoexposure. Using default exposure of 1.0")
-            return 1.0
-        # Create ImageBuf from ImageInput
-        imgbuf = oiio.ImageBuf(imgpath)
-        imgspec = imgbuf.spec()
-
-        # Construct ROI from self.autoexposure_center_percentage
-        center = (int(imgspec.width/2), int(imgspec.height/2))
-        size = (int(imgspec.width * self.autoexposure_center_percentage), int(imgspec.height * self.autoexposure_center_percentage))
-
-        box_roi = oiio.ROI(int(center[0]-size[0]/2), int(center[0]+size[0]/2), int(center[1]-size[1]/2), int(center[1]+size[1]/2))
-        pixels = imgbuf.get_pixels(format=oiio.FLOAT, roi=box_roi)
-        img_average = pixels.mean()
-        return self.autoexposure_target / img_average
-
-
-    def copy_metadata(self, src, dst):
-        '''Uses exiftool to copy all metadata from src image path to dst image path
-        Args:
-            src {str} -- image path of source image
-            dst {str} -- image path of destination
-        '''
-        if self.exiftool:
-            exiftool_cmd = "{0} -overwrite_original -tagsFromFile {1} {2}".format(self.exiftool, src, dst)
-            log.debug("Copying exif metadata from raw: \t{0}".format(exiftool_cmd))
-            exiftool_proc = subprocess.Popen(shlex.split(exiftool_cmd))
-            result, error = exiftool_proc.communicate()
-            if error:
-                log.warning("Copying metadata failed: {0}".format(error))
-                return None
-            else:
-                return True
-        else:
-            log.error("Error: exiftool not found. Will skip setting the metadata.")
-            return None
-
-
-    def get_size(self, filepath, suffix='B'):
-        ''' Return filesize of filepath '''
-        num = os.path.getsize(filepath)
-        for unit in ['','Ki','Mi','Gi','Ti','Pi','Ei','Zi']:
-            if abs(num) < 1024.0:
-                return num, "%3.1f%s%s" % (num, unit, suffix)
-            num /= 1024.0
-        return num, "%.1f%s%s" % (num, 'Yi', suffix)
-
+        # log.info(oiio_cmd)
+        oiio_proc = subprocess.Popen(
+            shlex.split(oiio_cmd),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE)
+        result, error = oiio_proc.communicate()
+        
+        # delete temp tif image
+        os.remove(tmp_dstpath)
+        log.info('\t{0}'.format(dstpath))
+        return
+    
 
 if __name__=="__main__":
     debayer = Debayer()

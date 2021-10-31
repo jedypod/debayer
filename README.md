@@ -1,121 +1,116 @@
 # Debayer
+Debayer is a commandline tool to convert camera raw images into scene-linear exr.
 
-## Description
-Debayer is a commandline tool to process camera raw image formats into scene-linear exr and other formats. It uses OpenImageIO oiiotool with OpenColorIO, RawTherapee, DCRaw and exiftool.
-
-## Overview
-Debayer is a commandline tool designed to debayer raw files into scene-linear ACES exr. It also supports other output colorspaces using OpenColorIO, and supports tif, jpeg, or exr output formats.
-
-There is a yaml config file where you specify configuration options such as the locations of the required executables, exr compression settings, and default colorspace transforms.
-
-## Usage
-The only argument required to run debayer is a source directory. Debayer runs recursively on the source directory: all raw files inside the source directory and all subdirectories will be debayered. The source directory tree will be reconstructed under the destination directory.
-
-Debayer works by using either RawTherapee or dcraw to debayer the source raw file to a temporary tiff file. The temporary tiff file will be an ACES 2065-1 colorspace scene-linear image. This image is then used as a source for openimageio to convert to whatever the output format and colorspace is.
-
-Debayer uses a "default" pp3 profile when using rawtherapee, which will output to scene-linear ACES 2065-1 32 bit float tiff (assuming the defaults in the config are kept).
-
-A common workflow would be to open rawtherapee and set up a profile on an example image. For example, to whitebalance accurately, to set up chromatic abberration and defringing, or specify custom sharpening or debayer algorithm settings. Once you have a pp3 profile, you can save this in your output directory, and specify it with the `-p` flag.
-
-Debayer can also auto-expose your raw images with a crude autoexposure algorithm with the `-a` flag. The default behavior is to autoexpose once on the center frame for image sequences, but you can autoexpose each frame if desired with the `-ae` flag. The autoexposure_center_percentage and autoexposure_target values in the config file will determine the calculated autoexposure.
-
+## Dependencies
+- [OpenImageIO](https://github.com/OpenImageIO/oiio) - oiiotool is used for converting debayered tif images to exr.
+- [RawTherapee](https://rawtherapee.com/downloads) - Powerful raw development software used to decode raw images. High quality, debayer algorithms, and more advanced raw processing like chromatic aberration removal.
+- [LibRaw](https://www.libraw.org/download) - dcraw_emu commandline utility included with LibRaw. Optional alternative for debayer. Simple, fast and effective.
 ## Commandline Options
-    usage: debayer [-h] [-v] [-o OUTPUT] [-w] [-f OUTPUT_FORMATS] [-p PROFILE]
-                [-ca] [--ocioconfig OCIOCONFIG] [-c COLORSPACES_OUT]
-                [-r RESIZE] [-e EXPOSURE] [-a] [-ae] [-se SEARCH_EXCLUDE]
-                [-si SEARCH_INCLUDE]
+    usage: debayer [-h] [-o OUTPUT] [-w] [-p PROFILE] [-ca] [-r RESIZE]
+                [-e EXPOSURE] [-f FILTER]
                 input_paths [input_paths ...]
 
-    Debayer raw files to output images. For each of one or more input directories,
-    recursively find all raw files, recreate the directory structure, and convert
-    to output images in destination directory
+    Debayer is a commandline tool to convert camera raw images into scene-linear
+    exr.
 
     positional arguments:
-    input_paths           Source(s) to process. Can one or more directories or
-                            raw images.
+    input_paths           Source(s) to process. Can be one or more images or
+                            directories containing images.
 
     optional arguments:
     -h, --help            show this help message and exit
-    -v, --verbose         Output lots of useless information.
     -o OUTPUT, --output OUTPUT
                             Output directory. If not specified, the current
                             directory will be used.
     -w, --overwrite       Overwrite existing output files.
-    -f OUTPUT_FORMATS, --output_formats OUTPUT_FORMATS
-                            Output image format. Default is exr. This can be exr,
-                            tif, jpg. Or a comma separated list like "exr,jpg"
     -p PROFILE, --profile PROFILE
                             Optional override to specify a custom rawtherapee pp3
-                            profile to use. If none, the default in the config
-                            file will be used.
+                            profile to use. If none, the default config file will
+                            be used.
     -ca, --aberration     Remove chromatic aberration (rawtherapee only)
-    --ocioconfig OCIOCONFIG
-                            OCIO config to use. If none specified, a generic ACES
-                            config will be used, which should handle most common
-                            color transforms.
-    -c COLORSPACES_OUT, --colorspaces_out COLORSPACES_OUT
-                            Output OCIO colorspace. If not specified the default
-                            defined in the config will be used. format:
-                            <format>:<colorspace> - e.g.
-                            "exr:lin_ap1,tif:lin_ap1,jpg:out_rec709" or
-                            "exr:lin_sgamut3cine" or "ACES - ACEScg"
     -r RESIZE, --resize RESIZE
                             Apply a resize to the output image. Aspect ratio is
                             not preserved if both width and height are specified.
-                            <width>x<height>. 1920x2348 (1x3) -> 5760x2348 ->
-                            3840x1565 -> 2880x1174. Or 1280x2160 (1x3) ->
-                            3840x2160 -> 2560x1440 -> 1920x1080. Or preserve
-                            aspect ratio if w or h = 0: e.g. "1920x0" Can also be
-                            a percentage like "50%"
+                            <width>x<height>. (ML 1x3) 1920x2348 -> 5760x2348 ->
+                            3840x1565 -> 2880x1174 (ML 1x3 2.35) - 1808x2300 ->
+                            (unsqueeze) 5424x2300 -> (0.5) 2712x1150 Or 1280x2160
+                            (1x3) -> 3840x2160 -> 2560x1440 -> 1920x1080 Or
+                            preserve aspect ratio if w or h = 0: e.g. "1920x0" Can
+                            also be a percentage like "50%"
     -e EXPOSURE, --exposure EXPOSURE
-                            Exposure adjust the output image. No autoexposure will
-                            be performed. e.g. 1.1 1.5 2.0
-    -a, --autoexpose      Auto expose. Image sequences will have static exposure
-                            adjustement.
-    -ae, --autoexpose_each
-                            Auto expose each frame.
-    -se SEARCH_EXCLUDE, --search_exclude SEARCH_EXCLUDE
-                            Strings to ignore. If image full path contains string,
-                            skip. Can be comma separated list.
-    -si SEARCH_INCLUDE, --search_include SEARCH_INCLUDE
-                            Only include files that contain <search_include>. Can
-                            be comma separated list.
+                            Raw to scene-linear exposure adjustment. Default is
+                            4.0
+    -f FILTER, --filter FILTER
+                            Include only files that match regex. Can be comma
+                            separated list.
+
+## Configuration
+First thing, you need to configure a few things in the debayer python file. At the top are a few variables you need to customize so debayer knows where to find the right executables.
+
+Most importantly, you need to set the location of the rawtherapee-cli and oiiotool executable files (or dcraw_emu if using this instead of rawtherapee).
+```
+RT_BIN = '/usr/bin/rawtherapee-cli'
+DCRAW_BIN = '/usr/bin/dcraw_emu'
+OIIO_BIN = '/usr/bin/oiiotool'
+```
+
+You also need to specify a temp directory for debayer to use as a location for intermediate files (don't worry they are cleaned up automatically).
+```
+CACHE_DIR = '/var/tmp/rt'
+```
+
+## Usage
+Using debayer is very simple if you are familiar with commandline utilities. In the simplest possible form, you could write
+
+```
+debayer rawfile.cr2
+```
+
+This will process the raw file into the directory you are currently in.
+
+If you want to specify a custom directory you could do
+```
+debayer rawfile.cr2 -o /path/to/output_dir
+```
+
+You can also process an entire source directory recursively. For example say you have this source directory structure:
+```
+/media/footage/20211012
+└── dng
+    ├── M22-1558
+    │   ├── M22-1558.000000.dng
+    │   ├── M22-1558.000001.dng
+    │   ├── M22-1558.000002.dng
+    │   ├── M22-1558.000003.dng
+    │   ├── M22-1558.000004.dng
+    └── M22-1600
+        ├── M22-1600_000000.dng
+        ├── M22-1600_000001.dng
+        ├── M22-1600_000002.dng
+        ├── M22-1600_000003.dng
+        └── M22-1600_000004.dng
+```
+
+Say you want to recursively process all raw files inside /media/footage/20211012/dng, and output the results into /media/footage/20211012/exr. You could run
+```
+debayer /media/footage/20211012/dng -o /media/footage/20211012/exr
+
+# or alternatively
+cd /media/footage/20211012
+debayer dng -o exr
+```
+
+You can specify a custom rawtherapee config pp3 file with `-p path/to/file.pp3`. This is useful if you need to customize whitebalance or sharpening settings for examples.
+
+A default config is included in the repo and is used by default unless you change the `RT_DEFAULT_PROFILE` variable in the debayer code. This default profile outputs to linear ACEScg, and uses the RCD debayer algorithm, which is the best quality.
 
 
-## Dependencies
-- [OpenImageIO](https://github.com/OpenImageIO/oiio) - Python module is used for autoexposure calculation. oiiotool is used for exr conversion after debayer.
-- [RawTherapee](https://rawtherapee.com/downloads) - Used for raw file debayering: Preferred high quality option. Supports more colorspaces and has better demoiseaicing algorithms.
-- [dcraw](https://www.cybercom.net/~dcoffin/dcraw/) - Used for raw file debayering: simple option. Limited to AHD demoisaicing and has limited raw file processing options.
-- [exiftool](https://www.sno.phy.queensu.ca/~phil/exiftool/) - Used for copying metadata to tif output images, and when using dcraw.
-- [PyYAML](https://pyyaml.org/wiki/PyYAML) - Used to read the yaml configuration file.
 
-## Installation
-### OSX
-On OSX, [Homebrew](https://brew.sh) can easily be used to install the needed dependencies:
+# Installation
 
-`brew install openimageio dcraw python pip exiftool`
-
-Pip can be used to install the python dependencies needed:
-
-`pip install PyYAML`
-
-
-### Linux
-On Fedora Linux, most dependencies can be installed with the package manager.
-
-`dnf install python rawtherapee pip openimageio dcraw exiftool`
-
-`pip install --user PyYAML`
-
-For other distributions I'm assuming it would be pretty straightforward as well...
-
-
-
-## The MIT License
-Copyright 2019 Jedediah Smith
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+## OpenImageIO
+oiiotool can be installed with common pacakge managers on all platforms. [See this documentation](https://github.com/OpenImageIO/oiio/blob/master/INSTALL.md#installing-from-package-managers) for help.
+## Rawtherapee
+[Packages are provided](http://rawtherapee.com) for all platforms. However if you are on linux, the appimage won't give you access to the rawtherapee-cli commandline utility. You will need to install or compile it. There is a copr for many fedora and rhel distros [here](https://download.copr.fedorainfracloud.org/results/scx/rawtherapee/), which might help you.
+## LibRaw
+[LibRaw provides](https://www.libraw.org/download) packages for Windows and Mac, and for Linux it is easy to compile with minimal dependencies. I would recommend compiling from [master](https://github.com/LibRaw/LibRaw) to get the latest raw formats like Canon CR3.

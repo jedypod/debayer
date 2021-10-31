@@ -367,11 +367,11 @@ ApplyLookTable=true
 ApplyBaselineExposureOffset=true
 ApplyHueSatMap=true
 DCPIlluminant=0
-WorkingProfile=ACESp0
+WorkingProfile=ACESp1
 WorkingTRC=Custom
 WorkingTRCGamma=1
 WorkingTRCSlope=1
-OutputProfile=RTv4_ACES-AP0
+OutputProfile=RTv4_ACES-AP1
 OutputProfileIntent=Relative
 OutputBPC=true
 
