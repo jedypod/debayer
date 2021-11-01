@@ -12,6 +12,9 @@ import logging
 import subprocess
 import shlex
 import distutils.spawn
+import threading
+import concurrent.futures
+import multiprocessing
 
 ''' -----------------------------------
     CONFIGURATION
@@ -56,6 +59,9 @@ RESIZE_FILTER = 'blackman-harris'
 RAW_FILE_FORMATS = ["crw", "cr2", "cr3", "dng", "nef", "nrw", "arw", "bay", 
     "cap", "iiq", "eip", "dcs", "dcr", "drf", "kdc", "erf", "fff", "mef", 
     "mdc", "mos", "mrw", "orf", "pef", "ptx", "raf", "raw", "rw2", "rwl", "srw", "x3f"]
+
+# Number of simultaneous jobs
+THREADS = 3
 
 ''' -----------------------------------
 '''
@@ -123,6 +129,11 @@ class Debayer():
                             type=float,
                             help="Raw to scene-linear exposure adjustment. Default is 4.0",
                             required=False)
+
+        parser.add_argument("-j", "--jobs",
+                                    type=int,
+                                    help="Number of simultaneous jobs.",
+                                    required=False)
         
         parser.add_argument("-f", "--filter",
                             help="Include only files that match regex. \n"
@@ -177,7 +188,6 @@ class Debayer():
         self.tmp_dir = CACHE_DIR
         if not os.path.isdir(self.tmp_dir):
             os.makedirs(self.tmp_dir)
-        log.info(self.tmp_dir)
 
         # Search filter String
         if args.filter:
@@ -229,47 +239,40 @@ class Debayer():
             if not error:
                 self.profile = tmp_profile
 
-
-        
         self.overwrite = args.overwrite
 
         self.resize = args.resize
 
         self.resize_filter = RESIZE_FILTER
         self.compression = EXR_COMPRESSION
+
         self.exposure = args.exposure
         if not self.exposure:
             self.exposure = DEFAULT_EXPOSURE
 
+        self.threads = args.jobs
+        if not self.threads:
+            self.threads = THREADS
+
         # process all raw images in input
         self.raw_images.sort()
-        for image in self.raw_images:
-            self.process_image(image, self.dst)
+        self.input_dir = None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
+            executor.map(self.process_image, self.raw_images)
 
         # Process input_dirs
-        for input_dir in self.input_dirs:
+        for self.input_dir in self.input_dirs:
             self.raw_images = list()
             
-            # Gather all raw images in input_dirs
-            for root, directories, filenames in os.walk(input_dir):
+            # Gather all raw images in input_dir
+            for root, directories, filenames in os.walk(self.input_dir):
                 for filename in filenames:
                     fpath = os.path.join(root, filename)
                     self.add_file(fpath)
-            
             self.raw_images.sort()
-            for imgpath in self.raw_images:
-                start_time = time.time()
-                # All directories below input_dir will be reconstructed in out_dir
-                out_subdir = imgpath.split(input_dir)[-1]
-                if out_subdir.startswith(os.path.sep):
-                    out_subdir = out_subdir[1:]
-                out_dir = os.path.join(self.dst, out_subdir)
-                out_dir = os.path.dirname(out_dir)
-                
-                self.process_image(imgpath, out_dir)
 
-                elapsed_time = datetime.timedelta(seconds = time.time() - start_time)
-                log.info("time: \t{0}".format(elapsed_time))
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
+                executor.map(self.process_image, self.raw_images)
 
 
 
@@ -296,21 +299,30 @@ class Debayer():
 
 
 
-    def process_image(self, imgpath, dstdir):
-        ''' Debayer and convert to exr target input image path
-            :param imgpath: string - raw image path to process
-            :param dstdir: string - destination directory to process into
+    def process_image(self, imgpath):
+        ''' Debayer target raw image to exr
+            :param imgpath: string - path of raw image to process
         '''
-        log.info('Processing:\n\t{0}'.format(imgpath))
+        start_time = time.time()
+        # If processing a folder full of images,
+        # all directories below self.input_dir will be reconstructed in out_dir
+        if self.input_dir:
+            out_subdir = imgpath.split(self.input_dir)[-1]
+            if out_subdir.startswith(os.path.sep):
+                out_subdir = out_subdir[1:]
+            out_dir = os.path.join(self.dst, out_subdir)
+            out_dir = os.path.dirname(out_dir)
+        else:
+            out_dir = self.dst
 
         img_dir, img_name = os.path.split(imgpath)
         img_basename, img_ext = os.path.splitext(img_name)
 
         tmp_dstpath = os.path.join(self.tmp_dir, img_basename + '.tif')
         
-        if not os.path.isdir(dstdir):
-            os.makedirs(dstdir)
-        dstpath = os.path.join(dstdir, img_basename + '.exr')
+        if not os.path.isdir(out_dir):
+            os.makedirs(out_dir)
+        dstpath = os.path.join(out_dir, img_basename + '.exr')
 
         if not self.overwrite:
             # check if output file exists already
@@ -371,7 +383,13 @@ class Debayer():
         
         # delete temp tif image
         os.remove(tmp_dstpath)
-        log.info('\t{0}'.format(dstpath))
+
+        log.info('Processing:\n\t{0}\n->\t{1}\n{2}'.format(
+            imgpath,
+            dstpath,
+            datetime.timedelta(seconds = time.time() - start_time)
+            ))
+        
         return
     
 
