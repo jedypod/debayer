@@ -18,35 +18,66 @@ import multiprocessing
 
 ''' -----------------------------------
     CONFIGURATION
-'''
 
-# location of rawtherapee-cli
-RT_BIN = '/usr/bin/rawtherapee-cli'
+Choose DEBAYER_ENGINE: 
+    - Rawtherapee: "rt",
+    - LibRaw dcraw_emu: "dc",
+    - Darktable: "dt",
+    - vkdt: "vkdt",
+'''
+DIR_PATH = os.path.dirname(os.path.realpath(__file__))
+
+# debayer software
+DEBAYER_ENGINE = 'dt'
+
 # location of oiiotool
 OIIO_BIN = '/usr/bin/oiiotool'
 
-DIR_PATH = os.path.dirname(os.path.realpath(__file__))
+# location of rawtherapee-cli
+RT_BIN = '/usr/bin/rawtherapee-cli'
+# Default rawtherapee pp3 config file to use
+RT_DEFAULT_PROFILE = os.path.join(DIR_PATH, 'lin_ap1_day.pp3')
 
-# Cache directory for temp files
-CACHE_DIR = '/var/tmp/rt'
+# location of darktable-cli
+DT_BIN = '/usr/bin/darktable-cli'
+''' Default darktable xmp config to use
+    A couple of tips to make these... 
+      1. Save a dtstyle or preset you want to use (preferably outputting scene-linear)
+      2. Apply the preset to an image
+      3. Open the xmp file associated with that image
+      4. Remove the <rdf:li      darktable:num="0"      darktable:operation="rawprepare" section. 
+         This will fuck up raw levels between different raw types if not removed.
+      5. Get rid of tags and other shit you don't want applied to all your images
+      6. If you update the settings of one <rdf:li section, the parameter hash changes, 
+         and you need to update the darktable:history_current_hash> line also
+      7. Why the fuck is this process such a mess?
+'''
+DT_DEFAULT_PROFILE = os.path.join(DIR_PATH, 'lin_bt2020_wb_day.xmp')
 
-# Default rawtherapee config file to use
-RT_DEFAULT_PROFILE = os.path.join(DIR_PATH, 'lin_ap1.pp3')
 
-
-# Use dcraw for debayer instead of rawtherapee
-USE_DCRAW = False
 # location of dcraw_emu from LibRaw
 DCRAW_BIN = '/usr/bin/dcraw_emu'
 
-# If USE_MATRIX = True, apply 3x3 color gamut conversion matrix
-USE_MATRIX = False
+
+# Cache directory for temp files
+CACHE_DIR = '/var/tmp/debayer'
+
+
+# Apply 3x3 color gamut conversion matrix
 mtx_XYZ_to_ACEScg = '1.65885437,-0.31185693,-0.24315603,-0.66228336,1.61220002,0.01585913,0.01148057,-0.00923633,0.91668653'
 mtx_ACES_to_ACEScg = '1.45143926,-0.23651077,-0.21492854,-0.07655376,1.17622995,-0.09967593,0.00831615,-0.00603245,0.99771643'
-OIIO_MATRIX = mtx_ACES_to_ACEScg
+mtx_Rec2020_to_ACEScg = '0.97469574,0.02163394,0.00367035,0.00167857,0.99773639,0.00058547,0.00488625,0.02113193,0.97398192'
+
+# Set default Matrices depending on debayer engine.
+if DEBAYER_ENGINE == 'dt':
+    OIIO_MATRIX = mtx_Rec2020_to_ACEScg
+elif DEBAYER_ENGINE == 'dc':
+    OIIO_MATRIX = mtx_ACES_to_ACEScg
+else:
+    OIIO_MATRIX = None
 
 # exr file compression: "none", "zip", "rle", "zips", "piz", "pxr24", "b44", "b44a", "dwaa:45", "dwab:45"
-EXR_COMPRESSION = 'dwaa:45'
+EXR_COMPRESSION = 'dwaa:15'
 
 # Default raw to scene-linear exposure
 DEFAULT_EXPOSURE = '4.0'
@@ -61,7 +92,7 @@ RAW_FILE_FORMATS = ["crw", "cr2", "cr3", "dng", "nef", "nrw", "arw", "bay",
     "mdc", "mos", "mrw", "orf", "pef", "ptx", "raf", "raw", "rw2", "rwl", "srw", "x3f"]
 
 # Number of simultaneous jobs
-THREADS = 3
+THREADS = 2
 
 ''' -----------------------------------
 '''
@@ -70,6 +101,7 @@ THREADS = 3
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(message)s',
+    datefmt="%H:%M:%S",
     handlers=[logging.StreamHandler(sys.stdout)])
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -157,21 +189,35 @@ class Debayer():
 
         args = parser.parse_args()
 
+        self.engine = DEBAYER_ENGINE
+        
         # Validate bin paths
-        self.rt_bin = RT_BIN
-        self.dcraw_bin = DCRAW_BIN
-        if USE_DCRAW:
-            if not os.path.exists(self.dcraw_bin):
-                log.error("Error: could not locate dcraw_emu")
-                return
-        else:
-            if not os.path.exists(self.rt_bin):
-                log.error("Error: could not locate rawtherapee-cli")
-                return
         self.oiio_bin = OIIO_BIN
         if not os.path.exists(self.oiio_bin):
             log.error("Error: could not locate oiiotool")
             return
+
+        self.rt_bin = None
+        self.dt_bin = None
+        self.dc_bin = None
+
+        if self.engine == 'rt':
+            self.rt_bin = RT_BIN
+            if not os.path.exists(self.rt_bin):
+                log.error("Error: could not locate rawtherapee-cli")
+                return
+        elif self.engine == 'dc':
+            self.dc_bin = DCRAW_BIN
+            if not os.path.exists(self.dc_bin):
+                log.error("Error: could not locate dcraw_emu")
+                return
+        elif self.engine == 'dt':
+            self.dt_bin = DT_BIN
+            if not os.path.exists(self.dt_bin):
+                log.error("Error: could not locate darktable-cli")
+                return
+        else:
+            log.error('Error: No debayer engine selected')
 
 
         # RawTherapee Profile
@@ -180,7 +226,10 @@ class Debayer():
             self.profile = os.path.expanduser(self.profile)
             self.profile = os.path.realpath(self.profile)
         else:
-            self.profile = RT_DEFAULT_PROFILE
+            if self.engine == 'rt':
+                self.profile = RT_DEFAULT_PROFILE
+            elif self.engine == 'dt':
+                self.profile =  DT_DEFAULT_PROFILE
         if not os.path.isfile(self.profile):
             log.error("Error: Specified rawtherapee profile does not exist.")
             return
@@ -189,7 +238,7 @@ class Debayer():
         self.aberration = args.aberration
         if self.aberration:
             # Copy pp3 profile to temp dir
-            tmp_profile = os.path.join(self.tmp_dir, os.path.basename(self.profile))
+            tmp_profile = os.path.join(self.cache_dir, os.path.basename(self.profile))
             log.debug("Chromatic Aberration specified: Creating temp profile: {0}".format(tmp_profile))
             shutil.copyfile(self.profile, tmp_profile)
             sed_proc = subprocess.Popen(shlex.split("sed -i -e 's/CA=false/CA=true/' {0}".format(tmp_profile)))
@@ -213,9 +262,9 @@ class Debayer():
             self.threads = THREADS
         
         # Create temp directory
-        self.tmp_dir = CACHE_DIR
-        if not os.path.isdir(self.tmp_dir):
-            os.makedirs(self.tmp_dir)
+        self.cache_dir = CACHE_DIR
+        if not os.path.isdir(self.cache_dir):
+            os.makedirs(self.cache_dir)
 
         # Search filter String
         if args.filter:
@@ -259,6 +308,7 @@ class Debayer():
         # process all raw images in input
         self.raw_images.sort()
         self.input_dir = None
+        # self.process_image(self.raw_images[0])
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
             executor.map(self.process_image, self.raw_images)
 
@@ -320,7 +370,12 @@ class Debayer():
         img_dir, img_name = os.path.split(imgpath)
         img_basename, img_ext = os.path.splitext(img_name)
 
-        tmp_dstpath = os.path.join(self.tmp_dir, img_basename + '.tif')
+        tmp_ext = '.tif'
+        # darktable outputs pfm quickest. exr out is slow, full 32 bit float, and limited compression options anyway.
+        if self.engine == 'dt':
+            tmp_ext = '.pfm'
+
+        tmp_dstpath = os.path.join(self.cache_dir, img_basename + tmp_ext)
         
         if not os.path.isdir(out_dir):
             os.makedirs(out_dir)
@@ -332,10 +387,10 @@ class Debayer():
                 log.error('Skipping existing output image:\n\t{0}'.format(dstpath))
                 return
 
-        if USE_DCRAW:
+        if self.engine == 'dc':
             # dcraw_emu debayer
             dcraw_cmd = '"{0}" -4 -T -q 11 -w -o 6 -H 0 -Z - "{1}"'.format(
-                self.dcraw_bin,
+                self.dc_bin,
                 imgpath,
                 )
             with open(tmp_dstpath, "w") as output_file:
@@ -343,12 +398,12 @@ class Debayer():
             result, error = dcraw_proc.communicate()
             if error:
                 log.error("Error Processing Result: " + error)
-
-        else:
+        
+        elif self.engine == 'rt':
             # rawtherapee debayer 
-            rt_cmd = '{0} -o "{1}" -p "{2}" -b16 -Y -q -f -t -c "{3}"'.format(
+            rt_cmd = '{0} -o "{1}" -p "{2}" -b32 -Y -q -f -t -c "{3}"'.format(
                 self.rt_bin,
-                self.tmp_dir,
+                self.cache_dir,
                 self.profile,
                 imgpath,
             )
@@ -359,11 +414,53 @@ class Debayer():
             result, error = rt_proc.communicate()
             if error:
                 log.error("Error Processing Result: " + error)
-        
+
+
+        elif self.engine == 'dt':
+            # need workaround to make darktable-cli run independent of database lock
+            # https://photo.stackexchange.com/questions/105969/darktable-cli-fails-because-of-locked-database-file
+            # create unique hash for dir, then clean up
+            # rand_str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+            # dt_configdir = os.path.join(self.cache_dir, rand_str)
+            # dt_cmd = '{0} "{1}" "{2}" "{3}" --core --library ":memory:" --configdir "{4}"'.format(
+            # then would have to copy data.db containing dtstyle... and... use --style?? fuck no
+            
+            # nevermind we can ignore the whole stupid dtstyle presets shenanigans. 
+            # actually no because xmp doesn't reliably capture the settings. xmp for cr2 doesn't work with dng and vice-versa
+            # actually yes, we just have to delete the "rawprepare" operation from the xmp file. fucking shit christ
+            dt_cmd = '{0} "{1}" "{2}" "{3}" --apply-custom-presets 0'.format(
+                            self.dt_bin,
+                            imgpath,
+                            self.profile,
+                            tmp_dstpath,
+                        )
+            
+            log.debug(dt_cmd)
+
+            # redirect all the garbage dt outputs to devnull
+            devnull = open(os.devnull, 'wb')
+            dt_proc = subprocess.Popen(
+                shlex.split(dt_cmd), 
+                stdin=subprocess.PIPE, 
+                stdout=subprocess.PIPE,
+                stderr=devnull,
+                )
+            result, error = dt_proc.communicate()
+
+            # # cleanup tmp config dir
+            # shutil.rmtree(dt_configdir, ignore_errors=True)
+                
+            if error:
+                log.error("Error Processing Result: " + error)
+                return
+
+
         if not os.path.isfile(tmp_dstpath):
             log.error("Output file did not generate:\n\t{0}".format(tmp_dstpath))
+            return
 
-        # oiiotool convert tiff to exr
+
+        # oiiotool convert tmp_dstpath to output exr
         oiio_cmd = '"{0}" -v "{1}"'.format(self.oiio_bin, tmp_dstpath)
         
         if self.resize:
@@ -374,7 +471,7 @@ class Debayer():
         oiio_cmd += ' -d half'
         oiio_cmd += ' --mulc {0}'.format(self.exposure)
 
-        if USE_MATRIX:
+        if OIIO_MATRIX:
             oiio_cmd += ' -ccmatrix:transpose=1 {0}'.format(OIIO_MATRIX)
 
         oiio_cmd += ' --compression {0}'.format(self.compression)
@@ -387,7 +484,7 @@ class Debayer():
             stdout=subprocess.PIPE)
         result, error = oiio_proc.communicate()
         
-        # delete temp tif image
+        # delete temp image
         os.remove(tmp_dstpath)
 
         log.info('Processing:\n\t{0}\n->\t{1}\n{2}'.format(
