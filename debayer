@@ -52,7 +52,9 @@ DT_BIN = '/usr/bin/darktable-cli'
          and you need to update the darktable:history_current_hash> line also
       7. Why the fuck is this process such a mess?
 '''
-DT_DEFAULT_PROFILE = os.path.join(DIR_PATH, 'lin_bt2020_wb_day.xmp')
+# dt_profile = 'lin_bt2020_wb_as-shot.xmp' # with as-shot whitebalance
+dt_profile = 'lin_bt2020_wb_day.xmp' # with manual daylight whitebalance
+DT_DEFAULT_PROFILE = os.path.join(DIR_PATH, dt_profile)
 
 
 # location of dcraw_emu from LibRaw
