@@ -232,9 +232,10 @@ class Debayer():
                 self.profile = RT_DEFAULT_PROFILE
             elif self.engine == 'dt':
                 self.profile =  DT_DEFAULT_PROFILE
-        if not os.path.isfile(self.profile):
-            log.error("Error: Specified rawtherapee profile does not exist.")
-            return
+        if self.profile:
+            if not os.path.isfile(self.profile):
+                log.error("Error: Specified profile does not exist.")
+                return
 
         # Chromatic aberration 
         self.aberration = args.aberration
