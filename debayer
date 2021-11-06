@@ -16,30 +16,74 @@ import threading
 import concurrent.futures
 import multiprocessing
 
-''' -----------------------------------
-    CONFIGURATION
 
-Choose DEBAYER_ENGINE: 
-    - Rawtherapee: "rt",
-    - LibRaw dcraw_emu: "dc",
-    - Darktable: "dt",
-    - vkdt: "vkdt",
-'''
+# Set up logger # %(levelname)s %(asctime)s
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(message)s',
+    datefmt="%H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)])
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+# log.setLevel(logging.DEBUG)
+
+
+# -----------------------------------
+#    CONFIGURATION
+
 DIR_PATH = os.path.dirname(os.path.realpath(__file__))
+PRESETS = os.path.join(DIR_PATH, 'presets')
 
-# debayer software
+'''
+DEBAYER ENGINES
+
+-----------------------------------------
+Rawtherapee
+    http://rawtherapee.com
+    https://github.com/Beep6581/RawTherapee
+
+    Decent quality. RCD debayer. Good chromatic aberration removal. 
+    Terrible posterization errors sometimes.
+
+-----------------------------------------
+dcraw_emu
+    https://www.libraw.org
+    https://github.com/LibRaw/LibRaw/
+
+    Simple, easy to compile. Medium quality. DHT or AAHD is best debayer algorithm.
+
+-----------------------------------------
+Darktable
+    https://www.darktable.org
+    https://github.com/darktable-org/darktable
+
+    RCD debayer, floating point. good quality. 
+
+-----------------------------------------
+vkdt
+    https://jo.dreggn.org/vkdt/
+    https://github.com/hanatos/vkdt
+    https://discuss.pixls.us/t/vkdt-devel-diary
+
+    crazy fast, terrible debayer quality. might be fine if downscaling
+
+'''
+
+# Debayer engine options
+DEBAYER_ENGINES = ['rt', 'dc', 'dt', 'vkdt'] 
+# Debayer engine to use
 DEBAYER_ENGINE = 'dt'
 
-# location of oiiotool
-OIIO_BIN = '/usr/bin/oiiotool'
+# Binary executable locations
+RT_BIN      = '/usr/bin/rawtherapee-cli'
+DCRAW_BIN   = '/usr/bin/dcraw_emu'
+DT_BIN      = '/usr/bin/darktable-cli'
+VKDT_BIN    = '/opt/vkdt/vkdt/vkdt-cli'
+OIIO_BIN    = '/usr/bin/oiiotool'
 
-# location of rawtherapee-cli
-RT_BIN = '/usr/bin/rawtherapee-cli'
-# Default rawtherapee pp3 config file to use
-RT_DEFAULT_PROFILE = os.path.join(DIR_PATH, 'lin_ap1_day.pp3')
+# Default profile locations
+RT_DEFAULT_PROFILE = os.path.join(PRESETS, 'lin_ap1_day.pp3')
 
-# location of darktable-cli
-DT_BIN = '/usr/bin/darktable-cli'
 ''' Default darktable xmp config to use
     A couple of tips to make these... 
       1. Save a dtstyle or preset you want to use (preferably outputting scene-linear)
@@ -48,35 +92,19 @@ DT_BIN = '/usr/bin/darktable-cli'
       4. Remove the <rdf:li      darktable:num="0"      darktable:operation="rawprepare" section. 
          This will fuck up raw levels between different raw types if not removed.
       5. Get rid of tags and other shit you don't want applied to all your images
-      6. If you update the settings of one <rdf:li section, the parameter hash changes, 
+      6. If you can't update the settings of one <rdf:li section, the parameter hash changes, 
          and you need to update the darktable:history_current_hash> line also
       7. Why the fuck is this process such a mess?
 '''
-# dt_profile = 'lin_bt2020_wb_as-shot.xmp' # with as-shot whitebalance
-dt_profile = 'lin_bt2020_wb_day.xmp' # with manual daylight whitebalance
-DT_DEFAULT_PROFILE = os.path.join(DIR_PATH, dt_profile)
-
-
-# location of dcraw_emu from LibRaw
-DCRAW_BIN = '/usr/bin/dcraw_emu'
-
+# DT_DEFAULT_PROFILE = os.path.join(PRESETS, 'lin_bt2020_wb_as-shot.xmp') # with as-shot whitebalance
+DT_DEFAULT_PROFILE = os.path.join(PRESETS, 'lin_bt2020_wb_day.xmp') # with manual daylight whitebalance
+VKDT_PRESET = os.path.join(PRESETS, 'lin_rec2020_wb_day.cfg')
 
 # Cache directory for temp files
 CACHE_DIR = '/var/tmp/debayer'
 
-
-# Apply 3x3 color gamut conversion matrix
-mtx_XYZ_to_ACEScg = '1.65885437,-0.31185693,-0.24315603,-0.66228336,1.61220002,0.01585913,0.01148057,-0.00923633,0.91668653'
-mtx_ACES_to_ACEScg = '1.45143926,-0.23651077,-0.21492854,-0.07655376,1.17622995,-0.09967593,0.00831615,-0.00603245,0.99771643'
-mtx_Rec2020_to_ACEScg = '0.97469574,0.02163394,0.00367035,0.00167857,0.99773639,0.00058547,0.00488625,0.02113193,0.97398192'
-
-# Set default Matrices depending on debayer engine.
-if DEBAYER_ENGINE == 'dt':
-    OIIO_MATRIX = mtx_Rec2020_to_ACEScg
-elif DEBAYER_ENGINE == 'dc':
-    OIIO_MATRIX = mtx_ACES_to_ACEScg
-else:
-    OIIO_MATRIX = None
+# Number of simultaneous jobs
+THREADS = 2
 
 # exr file compression: "none", "zip", "rle", "zips", "piz", "pxr24", "b44", "b44a", "dwaa:45", "dwab:45"
 EXR_COMPRESSION = 'dwaa:15'
@@ -93,21 +121,11 @@ RAW_FILE_FORMATS = ["crw", "cr2", "cr3", "dng", "nef", "nrw", "arw", "bay",
     "cap", "iiq", "eip", "dcs", "dcr", "drf", "kdc", "erf", "fff", "mef", 
     "mdc", "mos", "mrw", "orf", "pef", "ptx", "raf", "raw", "rw2", "rwl", "srw", "x3f"]
 
-# Number of simultaneous jobs
-THREADS = 2
+# 3x3 color gamut conversion matrices
+mtx_XYZ_to_ACEScg = '1.65885437,-0.31185693,-0.24315603,-0.66228336,1.61220002,0.01585913,0.01148057,-0.00923633,0.91668653'
+mtx_ACES_to_ACEScg = '1.45143926,-0.23651077,-0.21492854,-0.07655376,1.17622995,-0.09967593,0.00831615,-0.00603245,0.99771643'
+mtx_Rec2020_to_ACEScg = '0.97469574,0.02163394,0.00367035,0.00167857,0.99773639,0.00058547,0.00488625,0.02113193,0.97398192'
 
-''' -----------------------------------
-'''
-
-# Set up logger # %(levelname)s %(asctime)s
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(message)s',
-    datefmt="%H:%M:%S",
-    handlers=[logging.StreamHandler(sys.stdout)])
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
-# log.setLevel(logging.DEBUG)
 
 
 class Debayer():
@@ -141,8 +159,9 @@ class Debayer():
                             required=False)
         
         parser.add_argument("-p", "--profile",
-                            help="Optional override to specify a custom rawtherapee pp3 profile to use.\n"
-                                "If none, the default config file will be used.",
+                            help="Optional override to specify a custom profile to use.\n"
+                                "If none, the default config file will be used.\n"
+                                "Could be a pp3 file for rawtherapee, xmp for darktable, or cfg for vkdt.",
                             required=False)
         
         parser.add_argument("-ca", "--aberration",
@@ -199,43 +218,38 @@ class Debayer():
             log.error("Error: could not locate oiiotool")
             return
 
-        self.rt_bin = None
-        self.dt_bin = None
-        self.dc_bin = None
-
-        if self.engine == 'rt':
-            self.rt_bin = RT_BIN
-            if not os.path.exists(self.rt_bin):
-                log.error("Error: could not locate rawtherapee-cli")
-                return
-        elif self.engine == 'dc':
-            self.dc_bin = DCRAW_BIN
-            if not os.path.exists(self.dc_bin):
-                log.error("Error: could not locate dcraw_emu")
-                return
-        elif self.engine == 'dt':
-            self.dt_bin = DT_BIN
-            if not os.path.exists(self.dt_bin):
-                log.error("Error: could not locate darktable-cli")
-                return
-        else:
-            log.error('Error: No debayer engine selected')
-
-
-        # RawTherapee Profile
         self.profile = args.profile
+        # Use provided profile instead of defaults. No error checking!
         if self.profile:
             self.profile = os.path.expanduser(self.profile)
             self.profile = os.path.realpath(self.profile)
-        else:
-            if self.engine == 'rt':
-                self.profile = RT_DEFAULT_PROFILE
-            elif self.engine == 'dt':
-                self.profile =  DT_DEFAULT_PROFILE
-        if self.profile:
             if not os.path.isfile(self.profile):
                 log.error("Error: Specified profile does not exist.")
                 return
+
+        self.engine_bin = ''
+
+        if self.engine == 'rt':
+            self.engine_bin = RT_BIN
+            if not self.profile:
+                self.profile = RT_DEFAULT_PROFILE
+        elif self.engine == 'dc':
+            if not self.profile:
+                self.engine_bin = DCRAW_BIN
+        elif self.engine == 'dt':
+            self.engine_bin = DT_BIN
+            if not self.profile:
+                self.profile = DT_DEFAULT_PROFILE
+        elif self.engine == 'vkdt':
+            self.engine_bin = VKDT_BIN
+            if not self.profile:
+                self.profile = VKDT_PRESET
+        else:
+            log.error('Error: No debayer engine selected')
+        
+        if not os.path.exists(self.engine_bin):
+            log.error("Error: could not locate debayer engine binary. Please check configuration.")
+            return
 
         # Chromatic aberration 
         self.aberration = args.aberration
@@ -375,7 +389,8 @@ class Debayer():
 
         tmp_ext = '.tif'
         # darktable outputs pfm quickest. exr out is slow, full 32 bit float, and limited compression options anyway.
-        if self.engine == 'dt':
+        # vkdt also outputs pfm
+        if 'dt' in self.engine:
             tmp_ext = '.pfm'
 
         tmp_dstpath = os.path.join(self.cache_dir, img_basename + tmp_ext)
@@ -390,26 +405,28 @@ class Debayer():
                 log.error('Skipping existing output image:\n\t{0}'.format(dstpath))
                 return
 
+        gamut_conversion_matrix = None
+
+        # dcraw_emu debayer
         if self.engine == 'dc':
-            # dcraw_emu debayer
+            gamut_conversion_matrix = mtx_ACES_to_ACEScg
             dcraw_cmd = '"{0}" -4 -T -q 11 -w -o 6 -H 0 -Z - "{1}"'.format(
-                self.dc_bin,
-                imgpath,
-                )
+                self.engine_bin,
+                imgpath)
             with open(tmp_dstpath, "w") as output_file:
                 dcraw_proc = subprocess.Popen(shlex.split(dcraw_cmd), stdout=output_file)
             result, error = dcraw_proc.communicate()
             if error:
                 log.error("Error Processing Result: " + error)
         
+        # rawtherapee debayer 
         elif self.engine == 'rt':
-            # rawtherapee debayer 
+            gamut_conversion_matrix = None # Assume output is ACEScg
             rt_cmd = '{0} -o "{1}" -p "{2}" -b32 -Y -q -f -t -c "{3}"'.format(
-                self.rt_bin,
+                self.engine_bin,
                 self.cache_dir,
                 self.profile,
-                imgpath,
-            )
+                imgpath)
 
             log.debug(rt_cmd)
             rt_proc = subprocess.Popen(
@@ -418,8 +435,9 @@ class Debayer():
             if error:
                 log.error("Error Processing Result: " + error)
 
-
+        # darktable debayer
         elif self.engine == 'dt':
+            gamut_conversion_matrix = mtx_Rec2020_to_ACEScg
             # need workaround to make darktable-cli run independent of database lock
             # https://photo.stackexchange.com/questions/105969/darktable-cli-fails-because-of-locked-database-file
             # create unique hash for dir, then clean up
@@ -432,22 +450,16 @@ class Debayer():
             # actually no because xmp doesn't reliably capture the settings. xmp for cr2 doesn't work with dng and vice-versa
             # actually yes, we just have to delete the "rawprepare" operation from the xmp file. fucking shit christ
             dt_cmd = '{0} "{1}" "{2}" "{3}" --apply-custom-presets 0'.format(
-                            self.dt_bin,
-                            imgpath,
-                            self.profile,
-                            tmp_dstpath,
-                        )
-            
+                self.engine_bin,
+                imgpath,
+                self.profile,
+                tmp_dstpath)
             log.debug(dt_cmd)
-
-            # redirect all the garbage dt outputs to devnull
-            devnull = open(os.devnull, 'wb')
             dt_proc = subprocess.Popen(
                 shlex.split(dt_cmd), 
                 stdin=subprocess.PIPE, 
                 stdout=subprocess.PIPE,
-                stderr=devnull,
-                )
+                stderr=open(os.devnull, 'wb'))
             result, error = dt_proc.communicate()
 
             # # cleanup tmp config dir
@@ -457,7 +469,26 @@ class Debayer():
                 log.error("Error Processing Result: " + error)
                 return
 
-
+        # vkdt debayer
+        elif self.engine == 'vkdt':
+            gamut_conversion_matrix = mtx_Rec2020_to_ACEScg
+            vkdt_cmd = '{0} -g "{1}" --format o-pfm --filename "{2}" --config param:i-raw:01:filename:"{3}"'.format(
+                self.engine_bin,
+                self.profile,
+                os.path.splitext(tmp_dstpath)[0], # .pfm added automatically
+                imgpath)
+            log.debug(vkdt_cmd)
+            dt_proc = subprocess.Popen(shlex.split(vkdt_cmd), 
+                stdin=subprocess.PIPE, 
+                stdout=subprocess.PIPE,
+                stderr=open(os.devnull, 'wb'),
+                )
+            result, error = dt_proc.communicate()
+            
+            if error:
+                log.error("Error Processing Result: " + error)
+                return
+        
         if not os.path.isfile(tmp_dstpath):
             log.error("Output file did not generate:\n\t{0}".format(tmp_dstpath))
             return
@@ -474,8 +505,8 @@ class Debayer():
         oiio_cmd += ' -d half'
         oiio_cmd += ' --mulc {0}'.format(self.exposure)
 
-        if OIIO_MATRIX:
-            oiio_cmd += ' -ccmatrix:transpose=1 {0}'.format(OIIO_MATRIX)
+        if gamut_conversion_matrix:
+            oiio_cmd += ' -ccmatrix:transpose=1 {0}'.format(gamut_conversion_matrix)
 
         oiio_cmd += ' --compression {0}'.format(self.compression)
         oiio_cmd += ' -o {0}'.format(dstpath)
