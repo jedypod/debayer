@@ -1,10 +1,13 @@
 # Debayer
 Debayer is a commandline tool to convert camera raw images into scene-linear exr.
 
-## Dependencies
+# Dependencies
 - [OpenImageIO](https://github.com/OpenImageIO/oiio) - oiiotool is used for converting debayered tif images to exr.
-- [RawTherapee](https://rawtherapee.com/downloads) - Powerful raw development software used to decode raw images. High quality, debayer algorithms, and more advanced raw processing like chromatic aberration removal.
-- [LibRaw](https://www.libraw.org/download) - dcraw_emu commandline utility included with LibRaw. Optional alternative for debayer. Simple, fast and effective.
+- **Debayer Engines**
+  - [RawTherapee](https://rawtherapee.com/downloads) - Powerful raw development software used to decode raw images. High quality, debayer algorithms, and more advanced raw processing like chromatic aberration removal.
+  - [LibRaw](https://www.libraw.org/download) - dcraw_emu commandline utility included with LibRaw. Optional alternative for debayer. Simple, fast and effective.
+  - [Darktable](https://www.darktable.org) - Uses darktable-cli plus an xmp config to process.
+  - [vkdt](https://jo.dreggn.org/vkdt) - uses vkdt-cli to debayer.
 ## Commandline Options
     usage: debayer [-h] [-o OUTPUT] [-w] [-p PROFILE] [-ca] [-r RESIZE]
                 [-e EXPOSURE] [-f FILTER]
@@ -49,14 +52,17 @@ First thing, you need to configure a few things in the debayer python file. At t
 
 Most importantly, you need to set the location of the rawtherapee-cli and oiiotool executable files (or dcraw_emu if using this instead of rawtherapee).
 ```
-RT_BIN = '/usr/bin/rawtherapee-cli'
-DCRAW_BIN = '/usr/bin/dcraw_emu'
-OIIO_BIN = '/usr/bin/oiiotool'
+# Binary executable locations
+OIIO_BIN    = '/usr/bin/oiiotool'
+RT_BIN      = '/usr/bin/rawtherapee-cli'
+DCRAW_BIN   = '/usr/bin/dcraw_emu'
+DT_BIN      = '/usr/bin/darktable-cli'
+VKDT_BIN    = '/opt/vkdt/vkdt/vkdt-cli'
 ```
 
 You also need to specify a temp directory for debayer to use as a location for intermediate files (don't worry they are cleaned up automatically).
 ```
-CACHE_DIR = '/var/tmp/rt'
+CACHE_DIR = '/var/tmp/debayer'
 ```
 
 ## Usage
