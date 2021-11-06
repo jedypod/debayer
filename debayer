@@ -38,7 +38,7 @@ PRESETS = os.path.join(DIR_PATH, 'presets')
 DEBAYER ENGINES
 
 -----------------------------------------
-Rawtherapee
+rt : Rawtherapee
     http://rawtherapee.com
     https://github.com/Beep6581/RawTherapee
 
@@ -46,31 +46,46 @@ Rawtherapee
     Terrible posterization errors sometimes.
 
 -----------------------------------------
-dcraw_emu
+dc : dcraw_emu
     https://www.libraw.org
     https://github.com/LibRaw/LibRaw/
 
     Simple, easy to compile. Medium quality. DHT or AAHD is best debayer algorithm.
 
 -----------------------------------------
-Darktable
+dc-rcd : dcraw with RCD demoisaic
+    https://github.com/LuisSR/RCD-Demosaicing
+
+    Custom version of dcraw 9.27 compiled with RCD demoisaic algorithm.
+    Highest quality I've seen in open domain demoisaic algorithms. 
+    Won't support newer raw formats like CR3 though :/
+
+-----------------------------------------
+dt : Darktable
     https://www.darktable.org
     https://github.com/darktable-org/darktable
 
     RCD debayer, floating point. good quality. 
 
 -----------------------------------------
-vkdt
+vkdt : vkdt
     https://jo.dreggn.org/vkdt/
     https://github.com/hanatos/vkdt
     https://discuss.pixls.us/t/vkdt-devel-diary
 
     crazy fast, terrible debayer quality. might be fine if downscaling
 
+-----------------------------------------
+oiio : oiiotool
+    https://openimageio.readthedocs.io/en/latest/oiiotool.html
+
+    Uses oiiotool directly for debayer. Requires that it is compiled with LibRaw support.
+    Simple, good quality, fast. Single dependency. Good option.
+
 '''
 
 # Debayer engine options
-DEBAYER_ENGINES = ['rt', 'dc', 'dt', 'vkdt'] 
+DEBAYER_ENGINES = ['rt', 'dc', 'dc-rcd', 'dt', 'vkdt', 'oiio'] 
 # Debayer engine to use
 DEBAYER_ENGINE = 'dt'
 
@@ -125,8 +140,11 @@ RAW_FILE_FORMATS = ["crw", "cr2", "cr3", "dng", "nef", "nrw", "arw", "bay",
     "mdc", "mos", "mrw", "orf", "pef", "ptx", "raf", "raw", "rw2", "rwl", "srw", "x3f"]
 
 # 3x3 color gamut conversion matrices
+# D65-aligned XYZ to ACEScg with CAT02 CAT. Works with dcraw
 mtx_XYZ_to_ACEScg = '1.65885437,-0.31185693,-0.24315603,-0.66228336,1.61220002,0.01585913,0.01148057,-0.00923633,0.91668653'
+# ACES AP0 to ACES AP1 conversion. Works with dcraw
 mtx_ACES_to_ACEScg = '1.45143926,-0.23651077,-0.21492854,-0.07655376,1.17622995,-0.09967593,0.00831615,-0.00603245,0.99771643'
+# Rec.2020 to ACES AP1 conversion. Works with Darktable and vkdt
 mtx_Rec2020_to_ACEScg = '0.97469574,0.02163394,0.00367035,0.00167857,0.99773639,0.00058547,0.00488625,0.02113193,0.97398192'
 
 
@@ -237,8 +255,7 @@ class Debayer():
             if not self.profile:
                 self.profile = RT_DEFAULT_PROFILE
         elif self.engine == 'dc':
-            if not self.profile:
-                self.engine_bin = DCRAW_BIN
+            self.engine_bin = DCRAW_BIN
         elif self.engine == 'dt':
             self.engine_bin = DT_BIN
             if not self.profile:
@@ -247,6 +264,8 @@ class Debayer():
             self.engine_bin = VKDT_BIN
             if not self.profile:
                 self.profile = VKDT_PRESET
+        elif self.engine == 'oiio':
+            self.engine_bin = OIIO_BIN
         else:
             log.error('Error: No debayer engine selected')
         
@@ -328,9 +347,15 @@ class Debayer():
         # process all raw images in input
         self.raw_images.sort()
         self.input_dir = None
-        # self.process_image(self.raw_images[0])
-        with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
-            executor.map(self.process_image, self.raw_images)
+        
+        if self.threads > 1:
+            # process with multi-threading
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
+                executor.map(self.process_image, self.raw_images)
+        else:
+            for raw_image in self.raw_images:
+                self.process_image(raw_image)
+
 
         # Process input_dirs
         for self.input_dir in self.input_dirs:
@@ -343,8 +368,14 @@ class Debayer():
                     self.add_file(fpath)
             # Debayer images in input_dir
             self.raw_images.sort()
-            with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
-                executor.map(self.process_image, self.raw_images)
+
+            if self.threads > 1:
+                # process with multi-threading
+                with concurrent.futures.ThreadPoolExecutor(max_workers=self.threads) as executor:
+                    executor.map(self.process_image, self.raw_images)
+            else:
+                for raw_image in self.raw_images:
+                    self.process_image(raw_image)
 
 
 
@@ -412,10 +443,11 @@ class Debayer():
 
         # dcraw_emu debayer
         if self.engine == 'dc':
-            gamut_conversion_matrix = mtx_ACES_to_ACEScg
-            dcraw_cmd = '"{0}" -4 -T -q 11 -w -o 6 -H 0 -Z - "{1}"'.format(
+            gamut_conversion_matrix = mtx_XYZ_to_ACEScg
+            dcraw_cmd = '"{0}" -4 -T -q 11 -w -o 5 -H 0 -Z - "{1}"'.format(
                 self.engine_bin,
-                imgpath)
+                imgpath
+            )
             with open(tmp_dstpath, "w") as output_file:
                 dcraw_proc = subprocess.Popen(shlex.split(dcraw_cmd), stdout=output_file)
             result, error = dcraw_proc.communicate()
@@ -429,7 +461,8 @@ class Debayer():
                 self.engine_bin,
                 self.cache_dir,
                 self.profile,
-                imgpath)
+                imgpath
+            )
 
             log.debug(rt_cmd)
             rt_proc = subprocess.Popen(
@@ -462,7 +495,8 @@ class Debayer():
                 shlex.split(dt_cmd), 
                 stdin=subprocess.PIPE, 
                 stdout=subprocess.PIPE,
-                stderr=open(os.devnull, 'wb'))
+                stderr=open(os.devnull, 'wb')
+            )
             result, error = dt_proc.communicate()
 
             # # cleanup tmp config dir
@@ -485,20 +519,38 @@ class Debayer():
                 stdin=subprocess.PIPE, 
                 stdout=subprocess.PIPE,
                 stderr=open(os.devnull, 'wb'),
-                )
+            )
             result, error = dt_proc.communicate()
             
             if error:
                 log.error("Error Processing Result: " + error)
                 return
         
-        if not os.path.isfile(tmp_dstpath):
-            log.error("Output file did not generate:\n\t{0}".format(tmp_dstpath))
-            return
 
+        
+        # oiio command setup
+        oiio_cmd = '"{0}"'.format(self.oiio_bin)
 
-        # oiiotool convert tmp_dstpath to output exr
-        oiio_cmd = '"{0}" -v "{1}"'.format(self.oiio_bin, tmp_dstpath)
+        # use oiio for debayer and conversion to exr (uses libraw internally)
+        if self.engine == 'oiio':
+            gamut_conversion_matrix = mtx_XYZ_to_ACEScg
+            oiio_cmd += ' "{0}"'.format(imgpath)
+            # https://openimageio.readthedocs.io/en/latest/builtinplugins.html#raw-digital-camera-files
+            oiio_cmd += (
+                ' -iconfig raw:ColorSpace XYZ'
+                ' -iconfig raw:Demosaic DHT'
+                ' -iconfig raw:use_camera_matrix 3'
+                ' -iconfig raw:balance_clamped'
+                ' -i "{0}"'
+            ).format(imgpath)
+
+        # just use oiiotool to convert tmp_dstpath to output exr
+        else:
+            # make sure the temp image exists
+            if not os.path.isfile(tmp_dstpath):
+                log.error("Output file did not generate:\n\t{0}".format(tmp_dstpath))
+                return
+            oiio_cmd += ' {0}'.format(tmp_dstpath)    
         
         if self.resize:
             oiio_cmd += ' --resize {0}'.format(self.resize)
@@ -522,7 +574,8 @@ class Debayer():
         result, error = oiio_proc.communicate()
         
         # delete temp image
-        os.remove(tmp_dstpath)
+        if os.path.exists(tmp_dstpath):
+            os.remove(tmp_dstpath)
 
         log.info('Processing:\n\t{0}\n->\t{1}\n{2}'.format(
             imgpath,
