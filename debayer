@@ -53,12 +53,13 @@ dc : dcraw_emu
     Simple, easy to compile. Medium quality. DHT or AAHD is best debayer algorithm.
 
 -----------------------------------------
-dc-rcd : dcraw with RCD demoisaic
+dcrcd : dcraw with RCD demoisaic
     https://github.com/LuisSR/RCD-Demosaicing
 
     Custom version of dcraw 9.27 compiled with RCD demoisaic algorithm.
     Highest quality I've seen in open domain demoisaic algorithms. 
     Won't support newer raw formats like CR3 though :/
+    Also about 4x slower to process than other options.
 
 -----------------------------------------
 dt : Darktable
@@ -85,7 +86,7 @@ oiio : oiiotool
 '''
 
 # Debayer engine options
-DEBAYER_ENGINES = ['rt', 'dc', 'dc-rcd', 'dt', 'vkdt', 'oiio'] 
+DEBAYER_ENGINES = ['rt', 'dc', 'dcrcd', 'dt', 'vkdt', 'oiio'] 
 # Debayer engine to use
 DEBAYER_ENGINE = 'dt'
 
@@ -93,6 +94,7 @@ DEBAYER_ENGINE = 'dt'
 OIIO_BIN    = '/usr/bin/oiiotool'
 RT_BIN      = '/usr/bin/rawtherapee-cli'
 DCRAW_BIN   = '/usr/bin/dcraw_emu'
+DCRCD_BIN   = '/opt/dcraw/dcraw-rcd'
 DT_BIN      = '/usr/bin/darktable-cli'
 VKDT_BIN    = '/opt/vkdt/vkdt/vkdt-cli'
 
@@ -240,6 +242,7 @@ class Debayer():
             return
 
         self.profile = args.profile
+        
         # Use provided profile instead of defaults. No error checking!
         if self.profile:
             self.profile = os.path.expanduser(self.profile)
@@ -248,6 +251,7 @@ class Debayer():
                 log.error("Error: Specified profile does not exist.")
                 return
 
+        # Debayer engine setup
         self.engine_bin = ''
 
         if self.engine == 'rt':
@@ -256,6 +260,8 @@ class Debayer():
                 self.profile = RT_DEFAULT_PROFILE
         elif self.engine == 'dc':
             self.engine_bin = DCRAW_BIN
+        elif self.engine == 'dcrcd':
+            self.engine_bin = DCRCD_BIN
         elif self.engine == 'dt':
             self.engine_bin = DT_BIN
             if not self.profile:
@@ -446,7 +452,20 @@ class Debayer():
             gamut_conversion_matrix = mtx_XYZ_to_ACEScg
             dcraw_cmd = '"{0}" -4 -T -q 11 -w -o 5 -H 0 -Z - "{1}"'.format(
                 self.engine_bin,
-                imgpath
+                imgpath,
+            )
+            with open(tmp_dstpath, "w") as output_file:
+                dcraw_proc = subprocess.Popen(shlex.split(dcraw_cmd), stdout=output_file)
+            result, error = dcraw_proc.communicate()
+            if error:
+                log.error("Error Processing Result: " + error)
+
+        # dcraw RCD debayer
+        if self.engine == 'dcrcd':
+            gamut_conversion_matrix = mtx_XYZ_to_ACEScg
+            dcraw_cmd = '"{0}" -4 -T -H 0 -o 5 -q 4 -c "{1}"'.format(
+                self.engine_bin,
+                imgpath,
             )
             with open(tmp_dstpath, "w") as output_file:
                 dcraw_proc = subprocess.Popen(shlex.split(dcraw_cmd), stdout=output_file)
@@ -461,7 +480,7 @@ class Debayer():
                 self.engine_bin,
                 self.cache_dir,
                 self.profile,
-                imgpath
+                imgpath,
             )
 
             log.debug(rt_cmd)
@@ -489,7 +508,8 @@ class Debayer():
                 self.engine_bin,
                 imgpath,
                 self.profile,
-                tmp_dstpath)
+                tmp_dstpath,
+            )
             log.debug(dt_cmd)
             dt_proc = subprocess.Popen(
                 shlex.split(dt_cmd), 
