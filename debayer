@@ -75,11 +75,25 @@ DEBAYER_ENGINES = ['rt', 'dc', 'dt', 'vkdt']
 DEBAYER_ENGINE = 'dt'
 
 # Binary executable locations
+OIIO_BIN    = '/usr/bin/oiiotool'
 RT_BIN      = '/usr/bin/rawtherapee-cli'
 DCRAW_BIN   = '/usr/bin/dcraw_emu'
 DT_BIN      = '/usr/bin/darktable-cli'
 VKDT_BIN    = '/opt/vkdt/vkdt/vkdt-cli'
-OIIO_BIN    = '/usr/bin/oiiotool'
+
+# Cache directory for temp files
+CACHE_DIR = '/var/tmp/debayer'
+
+# Number of simultaneous jobs
+THREADS = 2
+
+# exr file compression: "none", "zip", "rle", "zips", "piz", "pxr24", "b44", "b44a", "dwaa:45", "dwab:45"
+EXR_COMPRESSION = 'dwaa:15'
+
+# Default raw to scene-linear exposure
+DEFAULT_EXPOSURE = '4.0'
+
+
 
 # Default profile locations
 RT_DEFAULT_PROFILE = os.path.join(PRESETS, 'lin_ap1_day.pp3')
@@ -100,17 +114,6 @@ RT_DEFAULT_PROFILE = os.path.join(PRESETS, 'lin_ap1_day.pp3')
 DT_DEFAULT_PROFILE = os.path.join(PRESETS, 'lin_bt2020_wb_day.xmp') # with manual daylight whitebalance
 VKDT_PRESET = os.path.join(PRESETS, 'lin_rec2020_wb_day.cfg')
 
-# Cache directory for temp files
-CACHE_DIR = '/var/tmp/debayer'
-
-# Number of simultaneous jobs
-THREADS = 2
-
-# exr file compression: "none", "zip", "rle", "zips", "piz", "pxr24", "b44", "b44a", "dwaa:45", "dwab:45"
-EXR_COMPRESSION = 'dwaa:15'
-
-# Default raw to scene-linear exposure
-DEFAULT_EXPOSURE = '4.0'
 
 # Override oiiotool resize filter algorithm, if RESIZE_FILTER != None
 # # "box", "triangle", "gaussian", "sharp-gaussian", "catmull-rom", "blackman-harris", "sinc", "lanczos3", "mitchell", "bspline", "cubic", "keys", "simon", "rifman"
