@@ -10,7 +10,7 @@ InTrash=false
 Enabled=true
 Compensation=0
 Black=0
-HLRecovery=Color
+HLRecovery=Blend
 HLRecoveryBlur=0
 
 [Saturation]
