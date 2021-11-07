@@ -46,6 +46,14 @@ rt : Rawtherapee
     Terrible posterization errors sometimes.
 
 -----------------------------------------
+art : Another Raw Therapee
+    https://bitbucket.org/agriggio/art/wiki/Home
+
+    A fork of Rawtherapee that makes some big improvements in the image processing 
+    pipeline. No posterization artifacts when outputting linear. 
+    Currently about 2x slower than RawTherapee and ART-cli crashes pretty often.
+
+-----------------------------------------
 dc : dcraw_emu
     https://www.libraw.org
     https://github.com/LibRaw/LibRaw/
@@ -86,13 +94,14 @@ oiio : oiiotool
 '''
 
 # Debayer engine options
-DEBAYER_ENGINES = ['rt', 'dc', 'dcrcd', 'dt', 'vkdt', 'oiio'] 
+DEBAYER_ENGINES = ['rt', 'art', 'dc', 'dcrcd', 'dt', 'vkdt', 'oiio'] 
 # Debayer engine to use
 DEBAYER_ENGINE = 'dt'
 
 # Binary executable locations
 OIIO_BIN    = '/usr/bin/oiiotool'
 RT_BIN      = '/usr/bin/rawtherapee-cli'
+ART_BIN      = '/usr/bin/ART-cli'
 DCRAW_BIN   = '/usr/bin/dcraw_emu'
 DCRCD_BIN   = '/opt/dcraw/dcraw-rcd'
 DT_BIN      = '/usr/bin/darktable-cli'
@@ -114,6 +123,7 @@ DEFAULT_EXPOSURE = '4.0'
 
 # Default profile locations
 RT_DEFAULT_PROFILE = os.path.join(PRESETS, 'lin_ap1_day.pp3')
+ART_DEFAULT_PROFILE = os.path.join(PRESETS, 'lin_ap1_day.arp')
 
 ''' Default darktable xmp config to use
     A couple of tips to make these... 
@@ -258,6 +268,10 @@ class Debayer():
             self.engine_bin = RT_BIN
             if not self.profile:
                 self.profile = RT_DEFAULT_PROFILE
+        elif self.engine == 'art':
+            self.engine_bin = ART_BIN
+            if not self.profile:
+                self.profile = ART_DEFAULT_PROFILE
         elif self.engine == 'dc':
             self.engine_bin = DCRAW_BIN
         elif self.engine == 'dcrcd':
@@ -282,7 +296,7 @@ class Debayer():
         # Chromatic aberration 
         self.aberration = args.aberration
         if self.aberration:
-            # Copy pp3 profile to temp dir
+            # Copy profile to temp dir
             tmp_profile = os.path.join(self.cache_dir, os.path.basename(self.profile))
             log.debug("Chromatic Aberration specified: Creating temp profile: {0}".format(tmp_profile))
             shutil.copyfile(self.profile, tmp_profile)
@@ -450,7 +464,15 @@ class Debayer():
         # dcraw_emu debayer
         if self.engine == 'dc':
             gamut_conversion_matrix = mtx_XYZ_to_ACEScg
-            dcraw_cmd = '"{0}" -4 -T -q 11 -w -o 5 -H 0 -Z - "{1}"'.format(
+            # whitebalance
+            #   https://photography-on-the.net/forum/showthread.php?t=740954
+            #   http://lclevy.free.fr/cr2/index.html#wb
+            # -w : use camera whitebalance if possible
+            # -r : 2.132483 1.000000 1.480864 - custom whitebalance day
+            # DCB : -q 4 -dcbe
+            # DHT : -q 11
+            # AAHD : -q 12
+            dcraw_cmd = '"{0}" -4 -T -q 4 -dcbe -o 5 -H 0 -Z - "{1}"'.format(
                 self.engine_bin,
                 imgpath,
             )
@@ -473,19 +495,27 @@ class Debayer():
             if error:
                 log.error("Error Processing Result: " + error)
         
-        # rawtherapee debayer 
-        elif self.engine == 'rt':
+        # ART or rawtherapee debayer
+        elif 'rt' in self.engine:
+            # note: removing -f because there is a but in ART-cli where it outputs 900px width if -f is enabled.
             gamut_conversion_matrix = None # Assume output is ACEScg
-            rt_cmd = '{0} -o "{1}" -p "{2}" -b32 -Y -q -f -t -c "{3}"'.format(
+            rt_params = '-b16 -Y -q -t'
+            if self.engine == 'rt':
+                rt_params += ' -f'
+            rt_cmd = '{0} -o "{1}" -p "{2}" {3} -c "{4}"'.format(
                 self.engine_bin,
                 self.cache_dir,
                 self.profile,
+                rt_params,
                 imgpath,
             )
-
             log.debug(rt_cmd)
             rt_proc = subprocess.Popen(
-                shlex.split(rt_cmd), stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                shlex.split(rt_cmd), 
+                stdin=subprocess.PIPE, 
+                stdout=subprocess.PIPE,
+                stderr=open(os.devnull, 'wb'),
+            )
             result, error = rt_proc.communicate()
             if error:
                 log.error("Error Processing Result: " + error)
@@ -524,7 +554,6 @@ class Debayer():
                 
             if error:
                 log.error("Error Processing Result: " + error)
-                return
 
         # vkdt debayer
         elif self.engine == 'vkdt':
@@ -544,12 +573,11 @@ class Debayer():
             
             if error:
                 log.error("Error Processing Result: " + error)
-                return
         
 
         
         # oiio command setup
-        oiio_cmd = '"{0}"'.format(self.oiio_bin)
+        oiio_cmd = '"{0}" -v'.format(self.oiio_bin)
 
         # use oiio for debayer and conversion to exr (uses libraw internally)
         if self.engine == 'oiio':
@@ -558,7 +586,9 @@ class Debayer():
             # https://openimageio.readthedocs.io/en/latest/builtinplugins.html#raw-digital-camera-files
             oiio_cmd += (
                 ' -iconfig raw:ColorSpace XYZ'
-                ' -iconfig raw:Demosaic DHT'
+                ' -iconfig raw:Demosaic AAHD'
+                ' -iconfig raw:use_camera_wb 0'
+                # ' -iconfig raw:user_mul 2.132483,1.0,1.0,1.480864'
                 ' -iconfig raw:use_camera_matrix 3'
                 ' -iconfig raw:balance_clamped'
                 ' -i "{0}"'
@@ -567,10 +597,13 @@ class Debayer():
         # just use oiiotool to convert tmp_dstpath to output exr
         else:
             # make sure the temp image exists
+            # if debayer engine segfaulted we will retry forever until it works :/
             if not os.path.isfile(tmp_dstpath):
-                log.error("Output file did not generate:\n\t{0}".format(tmp_dstpath))
+                log.error("Error: Output file did not generate:\n\t{0}\nTrying again...".format(tmp_dstpath))
+                self.process_image(imgpath)
                 return
-            oiio_cmd += ' {0}'.format(tmp_dstpath)    
+
+            oiio_cmd += ' {0}'.format(tmp_dstpath)
         
         if self.resize:
             oiio_cmd += ' --resize {0}'.format(self.resize)
