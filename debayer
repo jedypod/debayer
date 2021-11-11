@@ -96,12 +96,12 @@ oiio : oiiotool
 # Debayer engine options
 DEBAYER_ENGINES = ['rt', 'art', 'dc', 'dcrcd', 'dt', 'vkdt', 'oiio'] 
 # Debayer engine to use
-DEBAYER_ENGINE = 'dt'
+DEBAYER_ENGINE = 'rt'
 
 # Binary executable locations
 OIIO_BIN    = '/usr/bin/oiiotool'
-RT_BIN      = '/usr/bin/rawtherapee-cli'
-ART_BIN      = '/usr/bin/ART-cli'
+RT_BIN      = '/opt/bin/rawtherapee-cli'
+ART_BIN     = '/usr/bin/ART-cli'
 DCRAW_BIN   = '/usr/bin/dcraw_emu'
 DCRCD_BIN   = '/opt/dcraw/dcraw-rcd'
 DT_BIN      = '/usr/bin/darktable-cli'
@@ -122,8 +122,8 @@ DEFAULT_EXPOSURE = '4.0'
 
 
 # Default profile locations
-RT_DEFAULT_PROFILE = os.path.join(PRESETS, 'lin_ap1_day.pp3')
-ART_DEFAULT_PROFILE = os.path.join(PRESETS, 'lin_ap1_day.arp')
+RT_DEFAULT_PROFILE = os.path.join(PRESETS, 'acescg_wb-day.pp3')
+ART_DEFAULT_PROFILE = os.path.join(PRESETS, 'acescg_wb-day.arp')
 
 ''' Default darktable xmp config to use
     A couple of tips to make these... 
@@ -144,7 +144,7 @@ VKDT_PRESET = os.path.join(PRESETS, 'lin_rec2020_wb_day.cfg')
 
 # Override oiiotool resize filter algorithm, if RESIZE_FILTER != None
 # # "box", "triangle", "gaussian", "sharp-gaussian", "catmull-rom", "blackman-harris", "sinc", "lanczos3", "mitchell", "bspline", "cubic", "keys", "simon", "rifman"
-RESIZE_FILTER = None
+RESIZE_FILTER = 'blackman-harris'
 
 # Supported raw file extensions (uppercase automatically added)
 RAW_FILE_FORMATS = ["crw", "cr2", "cr3", "dng", "nef", "nrw", "arw", "bay", 
@@ -197,14 +197,20 @@ class Debayer():
                                 "Could be a pp3 file for rawtherapee, xmp for darktable, or cfg for vkdt.",
                             required=False)
         
+        parser.add_argument("-en", "--engine",
+                            help="Debayer engine to use:\n"
+                                "If none, the DEBAYER_ENGINE variable in will be used.\n"
+                                "one of: 'rt', 'art', 'dc', 'dcrcd', 'dt', 'vkdt', 'oiio'",
+                            required=False)
+
         parser.add_argument("-ca", "--aberration",
-                            help="Remove chromatic aberration (rawtherapee only)\n",
+                            help="Remove chromatic aberration (rawtherapee or ART only)\n",
                             action="store_true",
                             required=False)
         
         parser.add_argument("-r", "--resize",
                             help="Apply a resize to the output image. Aspect ratio is not preserved if both width and height are specified.\n"
-                                "<width>x<height>.\n"
+                                "<width>x<height>\n"
                                 "(ML 1x3) 1920x2348 -> 5760x2348 -> 3840x1565 -> 2880x1174\n"
                                 "(ML 1x3 2.35) - 1808x2300 -> (unsqueeze) 5424x2300 -> (0.5) 2712x1150\n"
                                 "Or 1280x2160 (1x3) -> 3840x2160 -> 2560x1440 -> 1920x1080\n"
@@ -243,7 +249,6 @@ class Debayer():
 
         args = parser.parse_args()
 
-        self.engine = DEBAYER_ENGINE
         
         # Validate bin paths
         self.oiio_bin = OIIO_BIN
@@ -261,8 +266,17 @@ class Debayer():
                 log.error("Error: Specified profile does not exist.")
                 return
 
+        
         # Debayer engine setup
         self.engine_bin = ''
+
+        self.engine = args.engine
+        if not self.engine:
+            self.engine = DEBAYER_ENGINE
+        else:
+            if self.engine not in DEBAYER_ENGINES:
+                log.error('Error: Invalid debayer engine specified.')
+                return
 
         if self.engine == 'rt':
             self.engine_bin = RT_BIN
@@ -296,14 +310,15 @@ class Debayer():
         # Chromatic aberration 
         self.aberration = args.aberration
         if self.aberration:
-            # Copy profile to temp dir
-            tmp_profile = os.path.join(self.cache_dir, os.path.basename(self.profile))
-            log.debug("Chromatic Aberration specified: Creating temp profile: {0}".format(tmp_profile))
-            shutil.copyfile(self.profile, tmp_profile)
-            sed_proc = subprocess.Popen(shlex.split("sed -i -e 's/CA=false/CA=true/' {0}".format(tmp_profile)))
-            result, error = sed_proc.communicate()
-            if not error:
-                self.profile = tmp_profile
+            if 'rt' in self.engine:
+                # Copy profile to temp dir
+                tmp_profile = os.path.join(self.cache_dir, os.path.basename(self.profile))
+                log.debug("Chromatic Aberration specified: Creating temp profile: {0}".format(tmp_profile))
+                shutil.copyfile(self.profile, tmp_profile)
+                sed_proc = subprocess.Popen(shlex.split("sed -i -e 's/CA=false/CA=true/' {0}".format(tmp_profile)))
+                result, error = sed_proc.communicate()
+                if not error:
+                    self.profile = tmp_profile
 
         self.overwrite = args.overwrite
 
@@ -315,6 +330,14 @@ class Debayer():
         self.exposure = args.exposure
         if not self.exposure:
             self.exposure = DEFAULT_EXPOSURE
+        
+        if 'rt' in self.engine or self.engine == 'dc':
+            # For rawtherapee, assumes pp3 profile which exposes -1 stop for highlight reconstruction
+            # For dcraw_emu, we use -H 2 : blend mode for highlight reconstruction. This mode exposes down the output by 1 stop, or *= 0.5
+            self.exposure *= 2
+        elif self.engine == 'oiio':
+            # oiiotool divides by ~2.25 when HighlightMode = 2
+            self.exposure *= 2.25
 
         self.threads = args.jobs
         if not self.threads:
@@ -422,7 +445,7 @@ class Debayer():
 
 
 
-    def process_image(self, imgpath):
+    def process_image(self, imgpath, i=0):
         ''' Debayer target raw image to exr
             :param imgpath: string - path of raw image to process
         '''
@@ -468,11 +491,13 @@ class Debayer():
             #   https://photography-on-the.net/forum/showthread.php?t=740954
             #   http://lclevy.free.fr/cr2/index.html#wb
             # -w : use camera whitebalance if possible
-            # -r : 2.132483 1.000000 1.480864 - custom whitebalance day
+            # -r : -r 2.25128 1 1.418116 1 - custom whitebalance automatic d65 Canon 5dmk3
+            # -r : -r 2.120117 1 1.872070 1 - custom whitebalance daylight Canon 5dmk3
             # DCB : -q 4 -dcbe
             # DHT : -q 11
             # AAHD : -q 12
-            dcraw_cmd = '"{0}" -4 -T -q 4 -dcbe -o 5 -H 0 -Z - "{1}"'.format(
+            # -H 2 = blend: best quality highlight reconstruction. exposes down output 1 stop.
+            dcraw_cmd = '"{0}" -4 -T -q 4 -dcbe -o 5 -H 2 -Z - "{1}"'.format(
                 self.engine_bin,
                 imgpath,
             )
@@ -497,7 +522,7 @@ class Debayer():
         
         # ART or rawtherapee debayer
         elif 'rt' in self.engine:
-            # note: removing -f because there is a but in ART-cli where it outputs 900px width if -f is enabled.
+            # note: removing -f because there is a bug in ART-cli where it outputs 900px width if -f is enabled.
             gamut_conversion_matrix = None # Assume output is ACEScg
             rt_params = '-b16 -Y -q -t'
             if self.engine == 'rt':
@@ -584,31 +609,42 @@ class Debayer():
             gamut_conversion_matrix = mtx_XYZ_to_ACEScg
             oiio_cmd += ' "{0}"'.format(imgpath)
             # https://openimageio.readthedocs.io/en/latest/builtinplugins.html#raw-digital-camera-files
+            # AAHD or DHT demoisaic are the best. DCB would be good, but -dcbe option not available in oiiotool.
+            # As far as I can tell, balance_clamped does nothing.
             oiio_cmd += (
                 ' -iconfig raw:ColorSpace XYZ'
                 ' -iconfig raw:Demosaic AAHD'
-                ' -iconfig raw:use_camera_wb 0'
-                # ' -iconfig raw:user_mul 2.132483,1.0,1.0,1.480864'
+                ' -iconfig raw:use_camera_wb 0' # Forces D65 whitebalance... I think?
+                # ' -iconfig raw:user_mul 2.132483,1.0,1.0,1.480864' # can do custom wb as well but it's unclear how this relates 
                 ' -iconfig raw:use_camera_matrix 3'
-                ' -iconfig raw:balance_clamped'
+                ' -iconfig raw:HighlightMode 2'
+                # ' -iconfig raw:balance_clamped'
                 ' -i "{0}"'
             ).format(imgpath)
 
         # just use oiiotool to convert tmp_dstpath to output exr
         else:
             # make sure the temp image exists
-            # if debayer engine segfaulted we will retry forever until it works :/
+            # if debayer engine segfaulted we will retry 3 times hoping it works :/
             if not os.path.isfile(tmp_dstpath):
-                log.error("Error: Output file did not generate:\n\t{0}\nTrying again...".format(tmp_dstpath))
-                self.process_image(imgpath)
+                log.error('Error: TMP image did not generate:\n\t{0}'.format(tmp_dstpath))
+                if i < 3:
+                    log.error('Retry {0}...'.format(i+1))
+                    self.process_image(imgpath, i=i+1)
+                else:
+                    log.error('Error: Could not process:\n\t{0}'.format(imgpath))
                 return
 
             oiio_cmd += ' {0}'.format(tmp_dstpath)
         
         if self.resize:
             oiio_cmd += ' --resize {0}'.format(self.resize)
-        if self.resize_filter:
-            oiio_cmd += ':filter={0}'.format(self.resize_filter)
+            if self.resize_filter:
+                oiio_cmd += ':filter={0}'.format(self.resize_filter)
+
+        if self.engine == 'vkdt':
+            # vkdt always outputs upside down images! :D
+            oiio_cmd += ' --flip'
 
         oiio_cmd += ' -d half'
         oiio_cmd += ' --mulc {0}'.format(self.exposure)
