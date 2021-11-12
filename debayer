@@ -122,7 +122,30 @@ DEFAULT_EXPOSURE = '4.0'
 
 
 # Default profile locations
+''' Default RawTherapee pp3 config
+    Requires that this icc profile for linear ACEScg output
+    https://github.com/ellelstone/elles_icc_profiles/blob/master/profiles/ACEScg-elle-V4-g10.icc
+
+    is installed in the iccprofiles path. It MUST BE NAMED 'ACEScg.icc' because this is 
+    what is named in the default pp3 below.
+    /usr/share/rawtherapee/iccprofiles/output/ACEScg.icc    (linux, BUILD_BUNDLE=OFF)
+    <rt-install-folder>/iccprofiles/output/ACEScg.icc         (linux, BUILDR_BUNDLE=ON)
+    <rt-install-folder>\iccprofiles\output (windows)
+    /Library/ColorSync/Profiles/Displays (mac, untested)
+    more info: https://rawpedia.rawtherapee.com/Color_Management#Adding_Custom_Working_Profiles
+
+    You can also use the custom icc profile creator as described here, and save this to the same directory
+    https://rawpedia.rawtherapee.com/ICC_Profile_Creator
+
+    This icc profile shenanigans are to work around a posterization bug in Rawtherapee 5.8 as described
+    https://github.com/Beep6581/RawTherapee/issues/6378
+
+    If you are using the latest nightly build the custom icc profile is not necessary, you can set the 
+    Tone response curve to 1.0, and the output to the built-in AP1 output profile.
+'''
 RT_DEFAULT_PROFILE = os.path.join(PRESETS, 'acescg_wb-day.pp3')
+
+# No icc profile required.
 ART_DEFAULT_PROFILE = os.path.join(PRESETS, 'acescg_wb-day.arp')
 
 ''' Default darktable xmp config to use
@@ -622,7 +645,6 @@ class Debayer():
                 ' -i "{0}"'
             ).format(imgpath)
 
-        # just use oiiotool to convert tmp_dstpath to output exr
         else:
             # make sure the temp image exists
             # if debayer engine segfaulted we will retry 3 times hoping it works :/
@@ -637,6 +659,7 @@ class Debayer():
 
             oiio_cmd += ' {0}'.format(tmp_dstpath)
         
+        # just use oiiotool to convert tmp_dstpath to output exr
         if self.resize:
             oiio_cmd += ' --resize {0}'.format(self.resize)
             if self.resize_filter:
