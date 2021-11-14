@@ -234,11 +234,11 @@ class Debayer():
         parser.add_argument("-r", "--resize",
                             help="Apply a resize to the output image. Aspect ratio is not preserved if both width and height are specified.\n"
                                 "<width>x<height>\n"
-                                "(ML 1x3) 1920x2348 -> 5760x2348 -> 3840x1565 -> 2880x1174\n"
-                                "(ML 1x3 2.35) - 1808x2300 -> (unsqueeze) 5424x2300 -> (0.5) 2712x1150\n"
-                                "Or 1280x2160 (1x3) -> 3840x2160 -> 2560x1440 -> 1920x1080\n"
                                 "Or preserve aspect ratio if w or h = 0: e.g. \"1920x0\"\n"
-                                "Can also be a percentage like \"50%%\"",
+                                "Can also be a percentage like \"50%%\""
+                                "(For Magic Lantern 1x3 anamorphic) 1920x2340 -> 5760x2340 -> 2880x1170\n"
+                                "(ML 1x3 2.35) - 1808x2300 -> (unsqueeze) 5424x2300 -> (0.5) 2712x1150\n"
+                                "Or 1280x2160 (1x3) -> 3840x2160 -> 2560x1440 -> 1920x1080\n",
                             required=False)
         
         parser.add_argument("-e", "--exposure",
