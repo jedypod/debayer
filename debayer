@@ -676,7 +676,7 @@ class Debayer():
             oiio_cmd += ' -ccmatrix:transpose=1 {0}'.format(gamut_conversion_matrix)
 
         oiio_cmd += ' --compression {0}'.format(self.compression)
-        oiio_cmd += ' -o {0}'.format(dstpath)
+        oiio_cmd += ' -o "{0}"'.format(dstpath)
 
         log.debug(oiio_cmd)
         oiio_proc = subprocess.Popen(
