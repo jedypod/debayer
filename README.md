@@ -6,7 +6,7 @@ The only required dependency is oiiotool. However other "debayer engines" are al
 
 - [OpenImageIO](https://github.com/OpenImageIO/oiio) - oiiotool is used for converting debayered tif images to exr.
 - **Debayer Engines**
-  - [RawTherapee](https://rawtherapee.com/downloads) - Powerful raw development software used to decode raw images. High quality, good selection of debayer algorithms, and more advanced raw processing like chromatic aberration removal. Strongly recommended that you use the latest nightly build: Faster and more stable.
+  - [RawTherapee](https://rawtherapee.com/downloads) - Powerful raw development software used to decode raw images. High quality, good selection of debayer algorithms, and more advanced raw processing like chromatic aberration removal.
   - [LibRaw](https://www.libraw.org/download) - dcraw_emu commandline utility included with LibRaw. Optional alternative for debayer. Simple, fast and effective.
   - [Darktable](https://www.darktable.org) - Uses darktable-cli plus an xmp config to process.
   - [vkdt](https://jo.dreggn.org/vkdt) - uses vkdt-cli to debayer. Pretty experimental still. Uses Vulkan for image processing. Stupidly fast. Pretty limited.
