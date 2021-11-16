@@ -58,9 +58,9 @@ You can set other options as well:
 Here is some more information about how to configure custom debayer settings for each of the debayer engines. I've included quite a bit of extra information here about the decisions I've made and why. 
 
 - [RawTherapee](docs/RawTherapee.md)
-- [dcraw](dcraw.md)
-- [DarkTable](Darktable.md)
-- [vkdt](vkdt.md)
+- [dcraw](docs/dcraw.md)
+- [DarkTable](docs/Darktable.md)
+- [vkdt](docs/vkdt.md)
 
 ## Usage
 Using debayer is very simple if you are familiar with commandline utilities. In the simplest possible form, you could write
@@ -94,11 +94,11 @@ You can also process an entire source directory recursively. For example say you
         └── M22-1600_000004.dng
 ```
 
-Say you want to recursively process all raw files inside /media/footage/20211012/dng, and output the results into /media/footage/20211012/exr. You could run
+Say you want to recursively process all raw files inside /media/footage/20211012/dng, and output the results, including subfolders, into /media/footage/20211012/exr. You could run
 ```
 debayer /media/footage/20211012/dng -o /media/footage/20211012/exr
 
-# or alternatively
+# or alternatively, you can use relative paths
 cd /media/footage/20211012
 debayer dng -o exr
 ```
